@@ -38,7 +38,11 @@ Kullanıcının kendi analizi için çizim araçları da var: trend çizgisi, ya
 | `patterns.js` | `SV.patterns.detect(bars, ctx, S)`: formasyonlar ve parabolik trend |
 | `analysis.js` | `SV.analysis.compute` (seviyeler, sinyaller, başarı istatistikleri, formasyonlar, durum), `htfTrends`, `arcs`, `signals`, `evaluate`, `indicators` |
 | `zones.js` | `SV.zones`: üst zaman dilimi (aylık/haftalık) direnç-destek motoru. `timeline` her yeni haftalık/aylık mumda bölgeleri yeniden hesaplar (geçmişe dönük değişmez). Ayrıca `resistanceSells` (Direnç sinyali), `now` ve `clusters` (İşlem fikri paneli) |
+| `scenario.js` | `SV.scen`: İşlem fikri senaryoları. HTF bölgeleri, tetik, plan (stop/TP1/TP2), güçlü kurulum koşulları, canlı durum (`live`), grafiğin geçmişindeki sonuç (`history`), gömülü backtest sonuçları (`STATS`) |
+| `scan.js` | `SV.scan`: Favorileri 4s ve 1G'de 5 dakikada bir tarar, güçlü kurulumları listeler ve bildirir |
 | `trades.js` | `SV.trades`: İşlemler paneli. Elle girilen işlemler ve Hyperliquid pozisyonları; K/Z, başabaş, likidasyon; grafikte fiyat çizgileri |
+| `history.js` | `SV.history`: Hyperliquid işlem geçmişi. Dolum ve fonlama geçmişini çeker, dolumlardan kapanmış işlemleri kurar, Geçmiş ve Analiz sekmelerini çizer, grafikteki geçmiş dolum işaretlerini sağlar, açık pozisyonun gerçekleşen K/Z ve fonlamasını başabaş hesabına verir |
+| `favs.js` | `SV.favs`: Favori listesi. Yıldız düğmesi, üst şeritteki favori çipleri ve 24 saatlik değişim |
 | `guide.js` | `SV.guide.render`: formasyon rehberi kartları ve SVG şemaları |
 | `drawings.js` | `SV.overlay(...)`: grafiğin üstündeki canvas katmanı. Sinyalleri, trendleri, formasyonları, parabolik eğriyi ve kullanıcı çizimlerini çizer, etkileşimi yönetir |
 | `app.js` | Veri çekme, canlı akış, grafik serileri, panel, katmanlar, ayarlar. Tamamı `(async () => { await SV.store.init(); ... })()` içinde |
@@ -46,7 +50,7 @@ Kullanıcının kendi analizi için çizim araçları da var: trend çizgisi, ya
 | `baslat.bat` | Windows'ta çift tıklayınca `server.py`'yi çalıştırır, tarayıcıyı açar |
 | `seviye.db` | Sunucu ilk çalıştığında oluşur. Tablo: `state(key, value JSON, updated)` |
 
-Yükleme sırası: `store.js` → `indicators.js` → `patterns.js` → `analysis.js` → `zones.js` → `guide.js` → `drawings.js` → `trades.js` → `app.js`.
+Yükleme sırası: `store.js` → `indicators.js` → `patterns.js` → `analysis.js` → `zones.js` → `scenario.js` → `guide.js` → `drawings.js` → `trades.js` → `history.js` → `favs.js` → `scan.js` → `app.js`.
 
 ## Kod kuralları
 
@@ -69,6 +73,10 @@ Yükleme sırası: `store.js` → `indicators.js` → `patterns.js` → `analysi
 | `seviye.islemler` | Elle girilen işlemler: `[{id, src:'Elle', symbol, market, side, entry, qty, lev, fee, t}]` |
 | `seviye.hl` | `{address}` Hyperliquid cüzdan adresi (sadece herkese açık adres) |
 | `seviye.islemlerAcik` | İşlemler paneli açık mı |
+| `seviye.islemYukseklik` | İşlemler panelinin kullanıcı ayarlı yüksekliği (px). `null` ise varsayılan (en fazla sol sütunun %42'si) |
+| `seviye.islemSekme` | İşlemler panelinin açık sekmesi: `pos`, `hist`, `ana` |
+| `seviye.gecmis` | `{period}` Geçmiş/Analiz dönemi: `7`, `30`, `90`, `365`, `all` |
+| `seviye.favoriler` | Favoriler: `[{s, m}]` (sembol, `spot`/`futures`). Anahtar yoksa BTC, ETH, SOL, LDO, AVAX, XRP (spot) ve HYPE (vadeli) ile başlar |
 | `seviye.cizim.<PARİTE>` | O paritenin çizimleri: `[{id, type, a:{t,p}, b?, p?, t2?, stop?, target?, hidden?}]` |
 
 ## Veri kaynakları
@@ -112,7 +120,7 @@ Kullanıcının isteği: Hyperliquid'de açtığı işlemi grafikte görmek, kâ
 - **Brüt K/Z** = yön × (fiyat − giriş) × miktar − ödenen fonlama.
 - **Net K/Z** = brüt − (giriş + fiyat) × miktar × komisyon.
 - **Gerçekleşen net** = kısmi satışlardan gelen kâr/zarar − ödenen komisyonlar − ödenen fonlama.
-  - Hyperliquid'de `userFills`'ten hesaplanır. Pozisyonu sıfırdan açan dolum (`startPosition` 0) bulunana kadar geriye doğru gidilir. Bu dolumların `closedPnl` ve `fee` değerleri toplanır; işaret değiştiren eski dolumlarda durulur. Fonlama `cumFunding.sinceOpen`'dan alınır, pozitifse ödenmiş kabul edilir; bu varsayım doğrulanmalı.
+  - Hyperliquid'de önce `history.js`'in kurduğu açık işlemden (`openInfo`) alınır: pozisyon sıfırdan açıldığından beri `closedPnl`, tüm komisyonlar ve `userFunding` toplamı (`usdc` negatifse ödenmiş). Geçmiş henüz yüklenmediyse yedek: `userFills`'te pozisyonu sıfırdan açan dolum (`startPosition` 0) bulunana kadar geriye gidilir, fonlama `cumFunding.sinceOpen`'dan alınır (pozitif = ödenmiş varsayımı).
   - Elle girilen işlemde `closes: [{q, px, t}]` listesinden hesaplanır. Komisyonlar: giriş × ilk miktar × k ve her kısmi satış için fiyat × miktar × k.
 - **Başabaş** (kalan miktar q için, çıkış komisyonu dahil):
   - Long: (giriş × q − gerçekleşen net) / (q × (1 − k)).
@@ -130,11 +138,36 @@ Kullanıcının isteği: Hyperliquid'de açtığı işlemi grafikte görmek, kâ
 
 **Grafik çizgileri:** Açık paritenin pozisyonları için fiyat çizgileri çizilir (katman: İşlemlerim):
 - Giriş: başlığında canlı net K/Z.
-- Başabaş: sarı noktalı.
+- Başabaş: sarı noktalı. Başlığında Hyperliquid pozisyonunda "(HL)" ve fiyata uzaklık % yazar. Fonlama ve kısmi satışlar dahildir.
 - Likidasyon: kırmızı kesikli.
 - TP ve SL: noktalı.
 
 **Tablo:** Sembole tıklayınca grafik o pariteye geçer.
+
+**Boyut:** Panelin üst kenarı sürüklenerek büyütülür/küçültülür (klavyede ok tuşları, çift tıklama varsayılana döner). Grafiğe en az 340 piksel bırakılır. 900 pikselden dar ekranlarda devre dışı.
+
+**Katmanlar kutusu:** Grafik alanının yüksekliğine sığar (zaman ekseninin üstünde biter), sığmazsa kendi içinde kaydırılır; başlığı yapışkandır.
+
+**Sekmeler:** Pozisyonlar, Geçmiş, Analiz. Geçmiş ve Analiz aynı dönem (7G/30G/90G/1Y/Tümü) ve sembol filtresini kullanır.
+
+## İşlem geçmişi (`history.js`)
+
+Kullanıcının isteği: Hyperliquid hesabındaki geçmiş işlemleri ve kâr/zarar analizini görmek.
+
+- **İstekler** (`SV.trades.post` ile, aynı `/api/hl` yedeği): `userFillsByTime` (`aggregateByTime: true`, yanıt başına 2000, Hyperliquid en fazla son 10.000 dolumu verir), `userFunding` (yanıt başına 500), `portfolio`. Yanıt dolu gelirse aralık en eski ve en yeni dolum zamanından ikiye bölünüp tekrar istenir (sıralama varsayımı yok), `tid` ile tekrarlar atılır. Bağlanınca tam çekim, sonra 60 saniyede bir sadece yeni kayıtlar.
+- **İşlem kurma:** Sadece vadeli dolumlar (`dir` içinde Long/Short; `@` ve `/` içeren spot coinler hariç). Her coin için zaman sırasıyla: `startPosition` 0'dan açılan pozisyon tekrar 0'a inince ya da yön değiştirince (`Long > Short`) bir işlem kapanır. Yön değiştiren dolum, kapanan kısım ve yeni açılan kısım olarak bölünür, komisyon miktara göre paylaştırılır. Geçmişin başında açılışı görünmeyen pozisyonlar "açılış geçmişte yok" olarak işaretlenir, ortalama girişi `closedPnl`'den geri hesaplanır.
+- **İşlem alanları:** açılış/kapanış zamanı, yön, en büyük pozisyon (adet ve $), ortalama giriş/çıkış, getiri %, brüt K/Z (`closedPnl` toplamı), komisyon, fonlama (o coin için açılış-kapanış arası `userFunding`), net = brüt − komisyon + fonlama.
+- **Elle girilen** ve tamamen kapatılmış işlemler de geçmişe eklenir (kaynak "Elle").
+- **Geçmiş sekmesi:** en yeni 400 işlem. Sembole tıklayınca grafik o pariteye geçer ve işlemin açılış-kapanış aralığını gösterir (grafik aynı sembolde ise piyasa değişmez).
+- **Kâr kademeleri (Analiz):** her kapanmış işlemin 1.000 $'lık pozisyon başına neti (net / en büyük pozisyon × 1000): Süper ≥ +200 $, Çok başarılı ≥ +100 $, Başarılı ≥ +50 $, Küçük kâr 0–50 $, Zarar; tümü, ≤ 7 gün, 7–30 gün, > 30 gün sütunlarıyla.
+- **Analiz sekmesi:** net K/Z, kazanma oranı, kâr faktörü, işlem başına ortalama, ortalama kazanç/kayıp, en iyi/en kötü işlem, komisyon + fonlama, en büyük geri çekilme ve en uzun kayıp serisi, ortalama tutma süresi (kazanan/kaybeden), kümülatif net K/Z eğrisi (SVG), long/short ve sembol tabloları, otomatik gözlemler (en az 5 işlemde: tutma süresi farkı, kazanma oranı-ortalama kayıp uyumsuzluğu, long/short farkı, komisyon payı, fonlama payı, en iyi/en kötü sembol, kayıp serisi). Üstte `portfolio`'dan hesap değeri ve 1 gün/1 hafta/1 ay/tümü K/Z (açık pozisyonlar dahil).
+- **Grafikte:** "Geçmiş işlemlerim" katmanı açık paritedeki dolumları üçgenle gösterir (yeşil alış, kırmızı satış; aynı mum ve yöndeki dolumlar birleşir, kapanışlarda net K/Z yazar).
+
+## Favoriler (`favs.js`)
+
+- Parite kutusunun yanındaki yıldız açık pariteyi (sembol + piyasa) favorilere ekler ya da çıkarır.
+- Favoriler üst şeritte çip olarak durur, yanında 30 saniyede bir güncellenen 24 saatlik değişim (Binance `ticker/24hr`).
+- Bir sembol spotta yoksa (`Invalid symbol`) grafik otomatik olarak vadeliye geçer ve favorideki piyasa da düzeltilir.
 
 ## Canlı fiyat yedeği
 
@@ -180,17 +213,35 @@ Sinyaller geçmişe dönük değişmez: her mum için sadece o ana kadarki veri 
 
 ### Buy
 
-Aşağıdaki iki kurulumdan biri yeterli. İki Buy arasında en az 10 mum olur.
+Aşağıdaki üç kurulumdan biri yeterli. İki Buy arasında en az 5 mum olur.
 
 1. **Dip süpürme:**
    - Bu mumun dibi son onaylı pivot dibinin (en fazla 60 mum önce) altına iner, kapanış ise yine üstünde olur.
-   - Alt fitil ≥ 1 ATR ve ≥ mumun %30'u.
+   - Alt fitil ≥ 0,6 ATR ve ≥ mumun %30'u.
    - Hacim ≥ 1,3 × 20 mumluk ortalama.
 2. **Trend içi süpürme:** Aynı yapı, ama alt fitil ≥ 0,3 ATR yeterli. Şart: kapanış > SMA200.
+3. **Kırılım alımı:** Yeşil çizgi (daralmadan yukarı kırılım ya da trend yönünde güçlü alım mumu) çıktığı mumda, kapanış > SMA200 ise. Onay beklenmez. Stop: bu mumun ve öncekinin en düşüğü.
 
-**Onay:** Süpürme mumundan sonraki 3 mum içinde, süpürme mumunun tepesinin üstünde yeşil kapanış gelmeli. Bundan önce süpürme mumunun dibi kırılırsa aday iptal olur.
+**Onay** (1 ve 2 için): Süpürme mumundan sonraki 3 mum içinde, süpürme mumunun tepesinin üstünde yeşil kapanış gelmeli. Bundan önce süpürme mumunun dibi kırılırsa aday iptal olur.
 
 **Stop** (istatistik için): süpürmeden onaya kadarki en düşük dip − 0,2 ATR.
+
+**Buy sayısını artırma çalışması** (kullanıcının isteği: Solana'da Buy çok az). Rastgeleye göre fark, eğitim BTC/ETH/BNB, test SOL/XRP:
+
+| Kurulum | Eğitim | Test | Solana | Karar |
+|---|---|---|---|---|
+| Eski kurallar (fitil ≥ 1 ATR, iki Buy arası 10 mum) | +0,35R | +0,17R | 26 sinyal, +0,44R | — |
+| Kırılım alımı | +0,12R | +0,24R | +0,28R | Eklendi |
+| Süpürme fitili 0,6 ATR | +0,22R | +0,07R | +0,35R | Eklendi |
+| Kırılım sonrası geri test | ~0R | ~0R | — | Alınmadı |
+| Üst zaman dilimi desteğinden onaylı tepki | ~0R | ~0R | — | Alınmadı |
+| Hacim şartını 1,0'a indirmek | — | ~0R | — | Alınmadı |
+
+**Sonuç:**
+- Tüm veri: 157 Buy (+0,29R) → 634 Buy (+0,18R).
+- Solana: 26 Buy → 112 Buy, +0,36R.
+- Zaman dilimine göre: 1s +0,15R, 4s +0,14R, 1G +0,42R.
+- Toplam beklenen kazanç yaklaşık 2,4 kat arttı.
 
 ### Sell
 
@@ -233,23 +284,46 @@ Kullanıcının isteği: uzun vadeli trend çizgileri, parabolik yaylar ve hafta
 - Destekten Buy tepkileri (aynı mantık, ters yön) rastgeleden iyi değildi (−0,07 ile +0,04R). Bu yüzden destekler sinyal değil, sadece İşlem fikri panelinde senaryo olarak gösterilir.
 - Mevcut Sell ile birleştirince Sell başına getiri +0,28R'den +0,15R'ye düşüyordu. Bu yüzden Direnç ayrı bir etiket ("Direnç", koyu kırmızı) ve ayrı bir katman olarak gösterilir.
 
-### İşlem fikri paneli
+### İşlem fikri paneli (`scenario.js`)
 
-Sağ panelin en üstünde.
+Sağ panelin en üstünde. Kullanıcının istekleri: senaryolar backtest ile desteklenmeli, grafik ilerledikçe güncellenmeli, iyi giriş oluşunca bildirim gelmeli; piyasa yönü (ayı/boğa) belirlenmeli; başarı 1.000 $'lık girişte +50 $ (başarılı), +100 $ (çok başarılı), +200 $ (süper başarılı) olarak ölçülmeli, haftalık işlemlerde +50–100 $ yeterli.
 
-- **Bölgeler:** O anki aylık/haftalık bölgeler ve grafik destek/direnç seviyeleri fiyatın ±%25'i içinde %1,2 aralıkla kümelenir. En yakın direnç kümesi ile en yakın destek kümesi gösterilir. Fiyat bir kümenin içindeyse uyarı çıkar.
-- **Eğilim puanı:** ana trend ±1, kısa vade ±0,5, son 150 mumda P −1, son 20 mumda mor −1 / yeşil +1, son 10 mumda Sell/Direnç −1, Buy +1. Toplam ≥ 1,5 ise yukarı, ≤ −1,5 ise aşağı, arası kararsız.
-- **Short senaryosu:** giriş direnç kümesinin altı, stop kümenin üstü + 0,5 ATR, hedef en yakın destek.
-- **Long senaryosu:** giriş destek kümesinin üstü, stop kümenin altı − 0,5 ATR, hedef en yakın direnç.
-- Her senaryoda risk/ödül oranı ve bu grafikteki geçmiş başarı yazar. "Grafiğe çiz" düğmesi long/short çizimini oluşturur.
-- Grafikte en yakın direnç ve destek kümesi yarı saydam bant olarak çizilir (katman: Fikir bölgeleri).
-- Panelde "yatırım tavsiyesi değildir" notu var.
+- **Piyasa yönü:** BTC aylık kapanışı (spot BTCUSDT 1M, 6 saatte bir) son 10 aylık kapanış ortalamasının üstündeyse boğa, altındaysa ayı. Sadece ay kapanışında değişir. Ay içinde güncel fiyat ortalamanın öbür tarafındaysa "ay böyle kapanırsa yön döner" uyarısı çıkar.
+  - Test (`/home/claude/bt/regime*.js`, 5 coin günlük 2018–2026): kendi grafiğine göre yön (SMA200, SMA50/200, haftalık 20/50, aylık 10, oylama) 2023 sonrası işe yaramadı. BTC aylık 10 kuralı iki dönemde de tuttu: 90 günde yön tarafında %20 hareketin ters taraftan önce gelme oranı %69 / %57 (2018–22 / 2023–26), ters taraf %57 / %43. 7–30 günde fark yok.
+- **Bölgeler:** Sadece aylık ve haftalık grafikten (`SV.zones.build`). Fiyatın ±%25'i içinde %1,2 aralıkla kümelenir. Grafik seviyeleri senaryoya katılmaz.
+- **Tetik:** Short: mum bölgenin alt kenarına 0,25 ATR yaklaşır ya da içine girer ve bölgenin altında kapatır; giriş o mumun kapanışı. Long tersi. Aynı yönde 6 mumdan sık sayılmaz. **Kapanış bölge kenarından 1 ATR'dan ya da %4'ten uzaksa "giriş için geç"** (kullanıcının haftalık grafikte 76.303'teki bölgeden %14 aşağıda 65.351 girişi görmesi üzerine eklendi; backtest'te bu girişler +50 $ %46, ortalama negatif).
+- **Plan (kullanıcının kademeleri):** stop girişin %5 ötesi (−50 $). +%5'te 1/3 kapatılır ve stop girişe çekilir, +%10'da 1/3, +%20'de kalan. 30 gün ufuk. Henüz tetiklenmemiş planda giriş bölge kenarından 0,4 ATR içeride tahmin edilir.
+- **Güçlü kurulum** = bölgede en az 2 kaynak + en az biri trend/parabolik + fiyat SMA200'ün lehte tarafında. Dördüncü satır piyasa yönü. **İyi kurulum** (bildirim) = güçlü + piyasa yönünde + backtest +50 $ oranı ≥ %60 + en az 60 örnek + test edilmiş zaman dilimi (1s/4s/1G).
+- **Backtest sonuçları** (30 gün, yukarıdaki plan, 1s/4s/1G, 5 coin; `regime8.js`, coin bölmesi `regime10.js`). Rastgele girişte ±%5'te önce hedef ≈ %50:
+  | Grup | n | +50 $ | +100 $ | +200 $ | ort. $/işlem | 7 gün +50 $ |
+  |---|---|---|---|---|---|---|
+  | Short güçlü · piyasa yönünde | 118 | %61 | %35 | %25 | +19 | %59 |
+  | Short güçlü · ters | 29 | %69 | %28 | %21 | +20 | %69 |
+  | Short zayıf · yönünde | 878 | %49 | %30 | %15 | +5 | %42 |
+  | Short zayıf · ters | 1038 | %56 | %32 | %17 | +11 | %49 |
+  | Long güçlü · yönünde | 68 | %68 | %40 | %12 | +22 | %53 |
+  | Long güçlü · ters | 38 | %76 | %58 | %26 | +56 | %29 |
+  | Long zayıf · yönünde | 1116 | %47 | %24 | %13 | −1 | %41 |
+  | Long zayıf · ters | 925 | %44 | %20 | %6 | −7 | %34 |
+  - Coin bölmesi tutarsız: short güçlü yönünde BTC/ETH/BNB %53, SOL/XRP %78; long güçlü yönünde %74 / %52. Veri çoğunlukla 2023–26.
+  - Eski 1R (TP1) ölçümü: güçlü short piyasa yönünde 115 işlemde %67 (rastgele %50), ters 33 işlemde %52.
+- **Durumlar:** Bekleniyor, Yaklaşıyor (≤ 1,5 ATR ya da ≤ %1,2), Bölgede, Giriş oluştu (son 3 kapanmış mumda; görülen kademe yazar), Bölge kırıldı; son kurulum için not (kademe/başabaş/stop/geç kalındı). 1s/4s/1G dışındaki zaman dilimlerinde "test edilmedi" uyarısı.
+- Panel bu grafiğin geçmişindeki aynı kuralın sonucunu da gösterir (`SV.scen.history`, aynı plan). 15 saniyede bir yeniden çizilir.
+- "Bu grafikte kısa vade" satırı (eğilim puanı): ana trend ±1, kısa vade ±0,5, son 150 mumda P −1, son 20 mumda mor −1 / yeşil +1, son 10 mumda Sell/Direnç −1, Buy +1.
+- "Bu planı grafiğe çiz" stop ve +100 $ hedefiyle long/short çizimi oluşturur. Grafikteki bölge bantlarında güçlüyse "· güçlü" yazar.
+
+### Favori taraması (`scan.js`)
+
+- Her favori için 4s ve 1G grafikte 5 dakikada bir (ilk tarama açılıştan 4 sn sonra) 500 mum çekilir, aylık/haftalık veri 6 saat önbellekte tutulur, `SV.scen.live` çalıştırılır.
+- Listede sadece güçlü kurulumlar (Giriş oluştu / Bölgede / Yaklaşıyor) görünür, "iyi kurulum" / "örnek az" / "piyasa yönüne ters" diye işaretlenir; zayıflar sayı olarak yazılır. Tıklayınca o parite ve zaman dilimi açılır. Bildirim sadece iyi kurulumlar için.
+- Açık grafikteki parite/zaman dilimi için bildirimi `app.js` verir, tarayıcı tekrar etmez.
 
 ### Bildirimler
 
 Panel başlığındaki "Bildirimleri aç" düğmesiyle açılır, ayar `notify`'da saklanır. Bildirimler hem tarayıcı bildirimi (izin verildiyse) hem sayfa içi uyarı kutusu olarak gelir.
 
-- **Bölgeye yaklaşma:** Fiyat bir bölgeye min(0,5 ATR, %0,6) kadar yaklaşınca. Aynı bölge için en fazla 3 saatte bir.
+- **İyi giriş:** İyi kurulum (güçlü + piyasa yönünde + +50 $ oranı ≥ %60) tetiklendiğinde; giriş, stop ve +50/+100/+200 $ fiyatlarıyla. Açık grafik ve favoriler (4s, 1G) için. Aynı mum için bir kez.
+- **Bölgeye yaklaşma:** Açık grafikte senaryo "Yaklaşıyor" ya da "Bölgede" olunca (güçlü/zayıf yazar); favorilerde sadece güçlü kurulumlar için. Aynı bölge için en fazla 3 saatte bir.
 - **Yeni sinyal:** Sayfa açıldıktan sonra kapanan mumlarda çıkan her sinyal.
 - **Sınır:** Sayfa açık olmalı. Tarayıcı bildirimi `localhost` (baslat.bat) ile güvenilir çalışır; `file://` açılışında genelde sadece sayfa içi uyarı görünür.
 
@@ -366,7 +440,7 @@ Kullanıcının örneklerindeki gibi uzun vadeli kavisli destek/direnç çizgisi
 | `opacity` | 0,5 (otomatik çizimlerin saydamlığı; kullanıcı çizimleri her zaman tam görünür) |
 | `pivot`, `levels`, `tol` | 5, 5, 0,6 |
 | `account`, `riskPct` | 1000, 1 |
-| `layers` | bs, zone, idea, react, big, ltb, rev, pat, para, htf1M, htf1w, htf1d, levels açık; sma kapalı |
+| `layers` | bs, zone, idea, react, big, ltb, rev, pat, para, htf1M, htf1w, htf1d, levels, vol, pos, hist açık; sma kapalı |
 | `layersOpen` | true (700 pikselden dar ekranda ilk açılışta false) |
 | `view`, `dom` | `chart`, `CRYPTOCAP:BTC.D` |
 
@@ -374,6 +448,7 @@ Kullanıcının örneklerindeki gibi uzun vadeli kavisli destek/direnç çizgisi
 
 - TradingView Lightweight Charts 4.2.3 (Apache 2.0). Fiyat verisi TradingView'den değil, Binance'ten gelir.
 - Lisans gereği atıf metni ve tradingview.com bağlantısı sağ panelin altında durmalı. Grafik üzerindeki logo `attributionLogo: false` ile kapalı.
+- Sayfa açılışında çizimler mumlardan önce yüklenir; `drawings.js` içindeki `idxOfTime`, `timeOfIdx` ve `outcome` mum yokken güvenli değer döndürür (kayıtlı long/short çizimi varken açılışta `Cannot read properties of undefined (reading 't')` hatası ve grafiğin yüklenmemesi böyle düzeltildi).
 - `logicalToCoordinate` kesirli indekslerde güvenilir değil. `drawings.js` içindeki `X()` iki komşu mum arasında doğrusal ara değer hesaplar.
 
 ## Olası sonraki adımlar
@@ -381,4 +456,5 @@ Kullanıcının örneklerindeki gibi uzun vadeli kavisli destek/direnç çizgisi
 - Backtest'i yeni verilerle düzenli tekrarlamak. Veri, uygulamanın tarayıcısında api.binance.com sayfasından çekilip JSON olarak indirilebilir.
 - Sarı çizgiyi ve formasyonları da backtest'e almak.
 - Bildirimleri Telegram'a göndermek (server.py üzerinden); şu an sayfa açık olmalı.
-- Bybit, OKX ve Hyperliquid desteği. Yeni sinyalde bildirim.
+- Bybit ve OKX desteği. Yeni sinyalde bildirim.
+- Hyperliquid `userFunding`'in HIP-3 (`xyz`) coinlerini kapsayıp kapsamadığı gerçek hesapta doğrulanmalı.

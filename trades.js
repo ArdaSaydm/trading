@@ -4,7 +4,7 @@ SV.trades = (() => {
   const HL = 'https://api.hyperliquid.xyz/info';
   const XYZ = { 'xyz:GOLD': 'XAUUSDT', 'xyz:SILVER': 'XAGUSDT', 'xyz:COPPER': 'COPPERUSDT', 'xyz:BRENTOIL': 'BZUSDT', 'xyz:CL': 'CLUSDT' };
   let D = null, manual = [], hl = { address: '', positions: [], orders: [], mids: {}, fee: 0.00045, err: '', at: 0, busy: false };
-  let closeFor = null, tickers = {}, lines = [], linesKey = '', hlTimer = null, tkTimer = null, lastTick = 0, open = true, form = null;
+  let tabNow = 'pos', closeFor = null, tickers = {}, lines = [], linesKey = '', hlTimer = null, tkTimer = null, lastTick = 0, open = true, form = null;
   const $ = id => document.getElementById(id);
   const num = (x, d = 2) => (x >= 0 ? '+' : '−') + Math.abs(x).toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
   const usd = x => `${num(x)} $`;
@@ -139,13 +139,88 @@ SV.trades = (() => {
     return { px, be, beSimple, liq, realizedNet, open, pct, roe: p.lev ? pct * p.lev : null, net: total, value: px * q, beDist: be != null ? (be - px) / px * 100 : null };
   }
 
-  const all = () => [...hl.positions, ...manual.map(view)];
+  function withHistory(p) {
+    const oi = SV.history.openInfo(p.coin);
+    return oi ? { ...p, realized: oi.pnl, fees: oi.fee, partial: oi.pnl !== 0, funding: -oi.funding, opened: oi.start } : p;
+  }
+
+  const all = () => [...hl.positions.map(withHistory), ...manual.map(view)];
+
+  function closedManual() {
+    return manual.map(view).filter(v => v.done && v.closes && v.closes.length).map(v => {
+      const cq = v.closes.reduce((a, c) => a + c.q, 0), m = v.closes.reduce((a, c) => a + c.px * c.q, 0) / (cq || 1);
+      const dir = v.side === 'long' ? 1 : -1, t1 = Math.max(...v.closes.map(c => c.t)) * 1000;
+      return { src: 'Elle', coin: v.symbol, symbol: v.symbol, market: v.market, side: v.side, start: (v.t || t1 / 1000) * 1000, end: t1, entry: v.entry, exit: m, ret: dir * (m - v.entry) / v.entry * 100, size: v.origQty * v.entry, maxQ: v.origQty, pnl: v.realized, fee: v.fees, funding: 0, net: v.realized - v.fees, fills: v.closes.length + 1 };
+    });
+  }
+
+  let panelH = null;
+  const wide = () => matchMedia('(min-width: 901px)').matches;
+
+  function applyHeight() {
+    const box = $('trades'), col = box.parentElement;
+    const on = open && panelH && wide();
+    if (on) {
+      const max = Math.max(120, col.clientHeight - 340);
+      box.style.height = Math.round(Math.min(max, Math.max(90, panelH))) + 'px';
+    } else box.style.height = '';
+    box.classList.toggle('sized', !!on);
+    if (D) D.resized();
+  }
+
+  function initResize() {
+    const h = $('tradesResize'), box = $('trades');
+    let y0 = 0, h0 = 0, id = null;
+    panelH = SV.store.get('seviye.islemYukseklik', null);
+    h.addEventListener('pointerdown', e => {
+      if (!wide()) return;
+      e.preventDefault();
+      id = e.pointerId; h.setPointerCapture(id); h.classList.add('drag');
+      y0 = e.clientY; h0 = box.getBoundingClientRect().height;
+    });
+    h.addEventListener('pointermove', e => {
+      if (id !== e.pointerId) return;
+      panelH = h0 + (y0 - e.clientY);
+      applyHeight();
+    });
+    const end = e => {
+      if (id !== e.pointerId) return;
+      id = null; h.classList.remove('drag');
+      panelH = box.getBoundingClientRect().height;
+      SV.store.set('seviye.islemYukseklik', Math.round(panelH));
+    };
+    h.addEventListener('pointerup', end);
+    h.addEventListener('pointercancel', end);
+    h.addEventListener('dblclick', () => { panelH = null; SV.store.set('seviye.islemYukseklik', null); applyHeight(); });
+    h.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      panelH = box.getBoundingClientRect().height + (e.key === 'ArrowUp' ? 30 : -30);
+      applyHeight();
+      SV.store.set('seviye.islemYukseklik', Math.round(box.getBoundingClientRect().height));
+    });
+    addEventListener('resize', () => { if (panelH) applyHeight(); });
+    applyHeight();
+  }
+
+  function setTab(t, quiet) {
+    tabNow = t;
+    SV.store.set('seviye.islemSekme', t);
+    for (const b of $('tradesTabs').children) b.setAttribute('aria-pressed', b.dataset.v === t);
+    $('posView').hidden = t !== 'pos';
+    $('histView').hidden = t !== 'hist';
+    $('anaView').hidden = t !== 'ana';
+    $('tradesTotal').hidden = t !== 'pos';
+    if (!open && !quiet) { open = true; SV.store.set('seviye.islemlerAcik', true); $('tradesToggle').textContent = '▾'; applyHeight(); }
+    render(true);
+    SV.history.render();
+  }
 
   function render(force) {
     if (!D) return;
-    if (closeFor && !force) return;
     const box = $('trades');
     box.classList.toggle('closed', !open);
+    if (closeFor && !force) return;
     const list = all(), cur = D.cur();
     let total = 0, have = 0;
     const rows = list.map(p => {
@@ -205,7 +280,7 @@ SV.trades = (() => {
       for (const p of mine) {
         const s = stats(p), col = p.side === 'long' ? '#26a69a' : '#ef5350';
         lines.push({ p, role: 'entry', pl: D.candle.createPriceLine({ price: p.entry, color: col, lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: '' }) });
-        lines.push({ p, role: 'be', pl: D.candle.createPriceLine({ price: s.be, color: '#e6c229', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'Başabaş' }) });
+        if (s.be != null && isFinite(s.be)) lines.push({ p, role: 'be', pl: D.candle.createPriceLine({ price: s.be, color: '#e6c229', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'Başabaş' }) });
         if (s.liq) lines.push({ p, role: 'liq', pl: D.candle.createPriceLine({ price: s.liq, color: '#ff1744', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: (p.src === 'Hyperliquid' ? '' : '~') + 'Likidasyon' }) });
         for (const o of hl.orders.filter(o => o.coin === p.coin)) {
           lines.push({ p, role: 'ord', pl: D.candle.createPriceLine({ price: o.px, color: o.kind === 'TP' ? '#26a69a' : '#ef5350', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: o.kind }) });
@@ -213,8 +288,9 @@ SV.trades = (() => {
       }
     }
     for (const l of lines) {
-      if (l.role !== 'entry') continue;
       const s = stats(l.p);
+      if (l.role === 'be') { l.pl.applyOptions({ title: `Başabaş${l.p.src === 'Hyperliquid' ? ' (HL)' : ''}${s.beDist != null ? ' · ' + num(s.beDist) + '%' : ''}` }); continue; }
+      if (l.role !== 'entry') continue;
       l.pl.applyOptions({ title: `${l.p.side === 'long' ? 'Long' : 'Short'} ${qtyTxt(l.p.qty)}${s.px != null ? ' · ' + usd(s.net) + ' (' + num(s.pct) + '%)' : ''}` });
     }
   }
@@ -226,7 +302,7 @@ SV.trades = (() => {
     render(); syncLines();
   }
 
-  function saveManual() { SV.store.set('seviye.islemler', manual); }
+  function saveManual() { SV.store.set('seviye.islemler', manual); SV.history.render(); }
 
   function showForm(kind) {
     form = form === kind ? null : kind;
@@ -267,6 +343,7 @@ SV.trades = (() => {
     if (a && !/^0x[0-9a-fA-F]{40}$/.test(a)) { $('hlErr').textContent = 'Geçerli bir cüzdan adresi gir (0x ile başlayan 42 karakter). Özel anahtar değil, sadece adres.'; return; }
     hl.address = a.toLowerCase(); hl.positions = []; hl.orders = []; hl.at = 0; hl.err = '';
     SV.store.set('seviye.hl', { address: hl.address });
+    SV.history.setAddress(hl.address);
     $('hlErr').textContent = '';
     showForm(null);
     clearInterval(hlTimer);
@@ -279,7 +356,7 @@ SV.trades = (() => {
     manual = SV.store.get('seviye.islemler', []);
     hl.address = (SV.store.get('seviye.hl', {}) || {}).address || '';
     open = SV.store.get('seviye.islemlerAcik', true);
-    $('tradesToggle').addEventListener('click', () => { open = !open; SV.store.set('seviye.islemlerAcik', open); $('tradesToggle').textContent = open ? '▾' : '▸'; render(); D.resized(); });
+    $('tradesToggle').addEventListener('click', () => { open = !open; SV.store.set('seviye.islemlerAcik', open); $('tradesToggle').textContent = open ? '▾' : '▸'; render(); applyHeight(); });
     $('tradesToggle').textContent = open ? '▾' : '▸';
     $('tradeAddBtn').addEventListener('click', () => showForm('add'));
     $('hlBtn').addEventListener('click', () => showForm('hl'));
@@ -313,10 +390,15 @@ SV.trades = (() => {
       t.closes = [...(t.closes || []), { q, px, t: Math.floor(Date.now() / 1000) }];
       saveManual(); closeFor = null; render(true); syncLines();
     });
-    if (hl.address) { refreshHL(); hlTimer = setInterval(refreshHL, 8000); }
+    $('tradesTabs').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) setTab(b.dataset.v); });
+    SV.history.init({ focus: D.focus, redraw: D.resized });
+    initResize();
+    tabNow = SV.store.get('seviye.islemSekme', 'pos');
+    setTab(['pos', 'hist', 'ana'].includes(tabNow) ? tabNow : 'pos', true);
+    if (hl.address) { SV.history.setAddress(hl.address); refreshHL(); hlTimer = setInterval(refreshHL, 8000); }
     refreshTickers(); tkTimer = setInterval(refreshTickers, 10000);
     render();
   }
 
-  return { init, tick, render, syncLines, refreshTickers, stats, mapCoin, _state: () => ({ manual, hl }) };
+  return { init, tick, render, syncLines, refreshTickers, stats, mapCoin, closedManual, post: hlPost, tab: () => tabNow, util: { num, usd, esc, qtyTxt }, _state: () => ({ manual, hl }) };
 })();

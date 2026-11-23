@@ -12,6 +12,7 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
 
   const idxOfTime = t => {
     const { bars, step } = get(), n = bars.length;
+    if (!n) return 0;
     if (t >= bars[n - 1].t) return n - 1 + (t - bars[n - 1].t) / step;
     if (t <= bars[0].t) return (t - bars[0].t) / step;
     let lo = 0, hi = n - 1;
@@ -20,6 +21,7 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
   };
   const timeOfIdx = l => {
     const { bars, step } = get(), n = bars.length;
+    if (!n) return 0;
     if (l >= n - 1) return bars[n - 1].t + (l - (n - 1)) * step;
     if (l <= 0) return bars[0].t + l * step;
     const lo = Math.floor(l);
@@ -89,6 +91,7 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
 
   function outcome(d) {
     const { bars } = get(), n = bars.length, long = d.type === 'long';
+    if (!n) return { k: 'wait' };
     const i0 = Math.max(0, Math.ceil(idxOfTime(d.a.t))), i1 = Math.min(n - 1, Math.floor(idxOfTime(d.t2)));
     if (i0 > n - 1) return { k: 'wait' };
     for (let i = i0; i <= i1; i++) {
@@ -232,7 +235,7 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         if (y1 == null || y2 == null || x1 == null) continue;
         g.fillStyle = fill; g.fillRect(x1, y1, W - x1, y2 - y1);
         line(x1, y1, W, y1, col, 1, [4, 3]); line(x1, y2, W, y2, col, 1, [4, 3]);
-        label(name, Math.min(W - 70, x1 + 60), (y1 + y2) / 2, col);
+        label(c.label || name, Math.min(W - 70, x1 + 60), (y1 + y2) / 2, col);
       }
     }
     if (res && res.patterns && S.layers.pat) {
@@ -288,6 +291,33 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         g.fillStyle = col; g.beginPath();
         g.moveTo(x, cy - 5); g.lineTo(x + 5, cy); g.lineTo(x, cy + 5); g.lineTo(x - 5, cy); g.closePath(); g.fill();
         if (bs >= 7) text(up ? 'Tepki ↑' : 'Tepki ↓', x, up ? cy + 13 : cy - 13, col, 'center', 600, 10.5);
+      }
+    }
+    const fl = get().fills;
+    if (fl && fl.length) {
+      g.globalAlpha = Math.max(0.75, op);
+      const grp = new Map(), t0 = bars[0].t;
+      for (const f of fl) {
+        if (f.t < t0) continue;
+        const bi = Math.floor(idxOfTime(f.t) + 1e-6), k = bi + '|' + f.side;
+        const a = grp.get(k) || { bi, side: f.side, q: 0, n: 0, pnl: 0, close: false };
+        a.q += f.sz; a.n += f.sz * f.px; a.pnl += f.pnl; a.close = a.close || f.close;
+        grp.set(k, a);
+      }
+      for (const a of grp.values()) {
+        const x = X(a.bi), y = Y(a.n / a.q);
+        if (x == null || y == null || x < -10 || x > W + 10) continue;
+        const up = a.side > 0, col = up ? '#26a69a' : '#ef5350', s = 6;
+        g.beginPath();
+        if (up) { g.moveTo(x, y); g.lineTo(x - s, y + s * 1.6); g.lineTo(x + s, y + s * 1.6); }
+        else { g.moveTo(x, y); g.lineTo(x - s, y - s * 1.6); g.lineTo(x + s, y - s * 1.6); }
+        g.closePath();
+        g.fillStyle = col; g.fill();
+        g.lineWidth = 1; g.strokeStyle = 'rgba(255,255,255,.85)'; g.stroke();
+        if (bs >= 5) {
+          const t = (up ? 'Al' : 'Sat') + (a.close && Math.abs(a.pnl) >= 0.01 ? ' ' + (a.pnl >= 0 ? '+' : '−') + Math.abs(a.pnl).toLocaleString('tr-TR', { maximumFractionDigits: Math.abs(a.pnl) >= 100 ? 0 : 2 }) + ' $' : '');
+          text(t, x, up ? y + s * 1.6 + 11 : y - s * 1.6 - 5, col, 'center', 600, 10.5);
+        }
       }
     }
     g.globalAlpha = 1;

@@ -17,7 +17,8 @@
         <button data-v="spot">Spot</button><button data-v="futures">Vadeli</button>
       </div>
       <input type="text" id="sym" list="syms" aria-label="Parite" spellcheck="false" autocomplete="off">
-      <datalist id="syms"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option><option>XRPUSDT</option><option>DOGEUSDT</option><option>XAUUSDT</option><option>XAGUSDT</option><option>COPPERUSDT</option><option>BZUSDT</option><option>CLUSDT</option></datalist>
+      <button class="star" id="favBtn" aria-pressed="false" title="Favorilere ekle" aria-label="Favorilere ekle"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></button>
+      <datalist id="syms"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option><option>XRPUSDT</option><option>HYPEUSDT</option><option>LDOUSDT</option><option>AVAXUSDT</option><option>DOGEUSDT</option><option>XAUUSDT</option><option>XAGUSDT</option><option>COPPERUSDT</option><option>BZUSDT</option><option>CLUSDT</option></datalist>
       <div class="seg" id="tf" role="group" aria-label="Zaman dilimi">
         <button data-v="5m">5d</button><button data-v="15m">15d</button><button data-v="1h">1s</button><button data-v="4h">4s</button><button data-v="1d">1G</button><button data-v="1w">1H</button><button data-v="1M">1A</button>
       </div>
@@ -26,9 +27,7 @@
     </div>
   </div>
   <nav class="quick" id="quick" aria-label="Hızlı seçim">
-    <button data-m="spot" data-s="BTCUSDT">BTC</button>
-    <button data-m="spot" data-s="ETHUSDT">ETH</button>
-    <button data-m="spot" data-s="SOLUSDT">SOL</button>
+    <span class="favs" id="favs"></span>
     <span class="sep"></span>
     <button data-m="futures" data-s="XAUUSDT">Altın</button>
     <button data-m="futures" data-s="XAGUSDT">Gümüş</button>
@@ -74,9 +73,11 @@
     <div class="tvbox" id="tvBox"></div>
   </div>
   <section class="trades" id="trades">
+    <div class="tresize" id="tradesResize" role="separator" aria-orientation="horizontal" aria-label="İşlemler panelinin yüksekliği" tabindex="0" title="Sürükleyerek boyutlandır · çift tıkla varsayılana dön"></div>
     <div class="thead">
       <button class="chip tg" id="tradesToggle" aria-label="İşlemler panelini aç/kapat">▾</button>
       <h2>İşlemler</h2>
+      <div class="seg sm" id="tradesTabs" role="group" aria-label="İşlemler görünümü"><button data-v="pos">Pozisyonlar</button><button data-v="hist">Geçmiş</button><button data-v="ana">Analiz</button></div>
       <span id="tradesTotal" class="tot"></span>
       <span class="sp"></span>
       <button class="chip" id="tradeAddBtn">İşlem ekle</button>
@@ -99,6 +100,7 @@
       <p class="note">Sadece herkese açık adres gerekir; özel anahtar ya da API anahtarı istenmez, işlem açılamaz. Adresi boş bırakıp Bağla'ya basarsan bağlantı kesilir.</p>
       <p class="note down" id="hlErr"></p>
     </form>
+    <div class="tview" id="posView">
     <p id="hlStatus" class="note"></p>
     <div class="tscroll">
       <table class="ttable">
@@ -106,12 +108,20 @@
         <tbody id="tradesBody"></tbody>
       </table>
     </div>
+    </div>
+    <div class="tview" id="histView" hidden></div>
+    <div class="tview" id="anaView" hidden></div>
   </section>
   </div>
   <aside>
     <section>
       <h2 class="h2row">İşlem fikri <button class="chip" id="notifyBtn"></button></h2>
       <div id="idea"><p class="empty">Hesaplanıyor…</p></div>
+    </section>
+    <section>
+      <h2>Favori taraması <span class="note" id="scanNote"></span></h2>
+      <ul class="ev scan" id="scan"></ul>
+      <p class="note">Favorilerin 4 saatlik ve günlük grafiklerinde 5 dakikada bir aynı short/long senaryoları aranır. Bildirimler açıksa güçlü kurulum bölgesine yaklaşınca ve %60 eşiğini geçen bir giriş oluşunca haber verilir. Tıklayınca grafik açılır.</p>
     </section>
     <section>
       <h2>Durum</h2>
@@ -161,7 +171,7 @@
       <details>
         <summary>Sinyaller ne anlama geliyor?</summary>
         <dl class="defs">
-          <dt><i class="sw buy"></i>Buy</dt><dd>Fiyat iğneyle son dibin altını süpürüp kapanışta geri alır (yüksek hacimle). Ardından 3 mum içinde süpürme mumunun tepesinin üstünde yeşil kapanış gelirse Buy verilir. Etiket bu onay mumundadır.</dd>
+          <dt><i class="sw buy"></i>Buy</dt><dd>Üç kurulum: (1) Fiyat iğneyle son dibin altını süpürüp kapanışta geri alır (yüksek hacim), ardından 3 mum içinde yukarı onay mumu gelir. (2) Aynısı, SMA200 üstünde daha kısa iğneyle. (3) SMA200 üstünde daralmış bantlardan yukarı kırılım ya da güçlü hacimli alım mumu (kırılım alımı).</dd>
           <dt><i class="sw buy"></i>Sell</dt><dd>Sadece fiyat SMA200 altındayken (düşüş rejimi): ya tepe süpürmesi ya da aşırı alım + direnç + Bollinger üst bandı gibi en az 4 koşul, ardından aşağı onay mumu.</dd>
           <dt><i class="sw ltb"></i>Mor P</dt><dd>Uzun vadeli sert düşüş uyarısı: fiyat ve SMA50, SMA200 altındayken SMA200'ün aşağı dönmesi. Sadece 4 saatlik ve üstü grafiklerde gösterilir; bir düşüş döneminde genelde bir kez çıkar.</dd>
           <dt><i class="sw big bear"></i>Mor çizgi</dt><dd>Büyük düşüş riski: daralmış Bollinger bantlarından aşağı kırılım ya da SMA200 altında yüksek hacimli büyük kırmızı mum.</dd>
@@ -200,9 +210,13 @@
 <script src="patterns.js"></script>
 <script src="analysis.js"></script>
 <script src="zones.js"></script>
+<script src="scenario.js"></script>
 <script src="guide.js"></script>
 <script src="drawings.js"></script>
 <script src="trades.js"></script>
+<script src="history.js"></script>
+<script src="favs.js"></script>
+<script src="scan.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

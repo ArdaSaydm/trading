@@ -207,7 +207,7 @@ SV.analysis = (() => {
       }
 
       if (i >= 210 && s200[i] != null) {
-        const emitBuy = (c, ext) => { if (i - cd.buy >= 10) { add(i, 'buy', c.why, { stop: ext, from: c.i }); cd.buy = i; } };
+        const emitBuy = (c, ext) => { if (i - cd.buy >= 5) { add(i, 'buy', c.why, { stop: ext, from: c.i }); cd.buy = i; } };
         const emitSell = (c, ext) => { if (i - cd.sell >= 10 && (!c.gateAtConfirm || b.c < s200[i])) { add(i, 'sell', c.why, { stop: ext, from: c.i }); cd.sell = i; } };
         tryConfirm('bA', i, 1, emitBuy);
         tryConfirm('bB', i, 1, emitBuy);
@@ -216,9 +216,9 @@ SV.analysis = (() => {
         const lastLow = kl[kl.length - 1];
         if (lastLow && i - lastLow.i <= 60 && b.l < lastLow.p && b.c > lastLow.p && volR >= 1.3 && lw >= rng * 0.3) {
           const base = ['Dip süpürüldü, fiyat geri aldı', `alt iğne ${(lw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'onay: sonraki mum yukarı kapattı'];
-          if (lw >= a) M5.bA = { i, why: base };
+          if (lw >= a * 0.6) M5.bA = { i, why: base };
           if (lw >= a * 0.3 && b.c > s200[i]) M5.bB = { i, why: [...base, 'trend yukarı (SMA200 üstü)'] };
-          if ((lw >= a || (lw >= a * 0.3 && b.c > s200[i])) && i - cd.react >= 5) { add(i, 'react', ['Dip süpürüldü: yukarı tepki adayı', `alt iğne ${(lw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'sonraki 3 mumda onay gelirse Buy olur'], { dir: 1 }); cd.react = i; }
+          if ((lw >= a * 0.6 || (lw >= a * 0.3 && b.c > s200[i])) && i - cd.react >= 5) { add(i, 'react', ['Dip süpürüldü: yukarı tepki adayı', `alt iğne ${(lw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'sonraki 3 mumda onay gelirse Buy olur'], { dir: 1 }); cd.react = i; }
         }
         for (let m = kh.length - 1; m >= 0 && m >= kh.length - 3; m--) {
           const p = kh[m];
@@ -256,7 +256,11 @@ SV.analysis = (() => {
           if (b.c > b.o && up) { cands.push([1, ['Trend yönünde güçlü alım mumu', `hacim ×${volR.toFixed(1)}`, 'SMA200 üstü', 'büyük yükseliş ihtimali']]); cdCl = i; }
           else if (b.c < b.o && !up) { cands.push([-1, ['Trend yönünde güçlü satış mumu', `hacim ×${volR.toFixed(1)}`, 'SMA200 altı', 'büyük düşüş riski']]); cdCl = i; }
         }
-        for (const [dir, why] of cands) if (i - cd.big >= 40) { add(i, dir > 0 ? 'bull' : 'bear', why); cd.big = i; }
+        for (const [dir, why] of cands) {
+          if (i - cd.big < 40) continue;
+          add(i, dir > 0 ? 'bull' : 'bear', why); cd.big = i;
+          if (dir > 0 && up && i - cd.buy >= 5) { add(i, 'buy', ['Kırılım alımı', ...why.slice(0, 2), 'SMA200 üstü'], { stop: Math.min(b.l, bars[i - 1].l), from: i }); cd.buy = i; }
+        }
       }
     }
     return out;

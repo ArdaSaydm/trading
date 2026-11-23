@@ -12,7 +12,7 @@ const TZ = -new Date().getTimezoneOffset() * 60;
 const DEF = {
   market: 'spot', symbol: 'BTCUSDT', interval: '4h', pivot: 5, levels: 5, tol: 0.6, sens: 4, cool: 20, ext: 20, depth: 3000, layersOpen: true, log: false, opacity: 0.5, notify: false, volH: 0.18,
   account: 1000, riskPct: 1, view: 'chart', dom: 'CRYPTOCAP:BTC.D',
-  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false }
+  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
 };
 const S = JSON.parse(JSON.stringify(DEF));
 {
@@ -24,7 +24,7 @@ if (!('layersOpen' in SV.store.get('seviye', {})) && innerWidth < 700) S.layersO
 const LAYERS = [
   ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'],
   ['pat', 'Formasyonlar', 'pat'], ['para', 'Parabolik yay', 'para'], ['htf1M', 'Aylık trend', 'tr w3'], ['htf1w', 'Haftalık trend', 'tr w2'],
-  ['htf1d', 'Günlük trend', 'tr'], ['levels', 'Destek / direnç', 'lv'], ['sma', 'SMA 50 / 200', 'sma'], ['vol', 'Hacim', 'volb'], ['pos', 'İşlemlerim', 'pos']
+  ['htf1d', 'Günlük trend', 'tr'], ['levels', 'Destek / direnç', 'lv'], ['sma', 'SMA 50 / 200', 'sma'], ['vol', 'Hacim', 'volb'], ['pos', 'İşlemlerim', 'pos'], ['hist', 'Geçmiş işlemlerim', 'hist']
 ];
 const EYE_ON = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
@@ -74,7 +74,7 @@ const toV = b => ({ time: b.t + TZ, value: b.v, color: alpha(b.c >= b.o ? C.up :
 
 const overlay = SV.overlay({
   chart, series: candle, stage: $('stage'), canvas: $('ov'),
-  get: () => ({ bars, step: STEP[S.interval], res, S, htf, patSel, idea })
+  get: () => ({ bars, step: STEP[S.interval], res, S, htf, patSel, idea, fills: S.layers.hist && SV.history ? SV.history.marks(S.symbol) : null })
 });
 
 function theme() {
@@ -134,6 +134,24 @@ async function fetchBars(my) {
   throw lastErr;
 }
 
+let altTried = false, pendingFocus = null;
+function idxAt(t) {
+  let lo = 0, hi = bars.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (bars[m].t <= t) lo = m; else hi = m - 1; }
+  return lo;
+}
+function showRange(t0, t1) {
+  if (!bars.length) return;
+  const a = idxAt(t0), b = idxAt(t1), pad = Math.max(30, Math.round((b - a) * 0.6));
+  chart.timeScale().setVisibleLogicalRange({ from: a - pad, to: b + pad });
+  setAuto(true);
+}
+function focusTrade(market, symbol, t0, t1) {
+  if (symbol === S.symbol) market = S.market;
+  if (market === S.market && symbol === S.symbol && bars.length) { if (S.view !== 'chart') setView('chart'); showRange(t0, t1); return; }
+  pendingFocus = { key: market + symbol, t0, t1 };
+  go(market, symbol);
+}
 async function load() {
   const my = ++wsToken;
   closeWs(); stopPoll(); wsFails = 0;
@@ -146,6 +164,7 @@ async function load() {
   try {
     const data = await fetchBars(my);
     if (my !== wsToken) return;
+    altTried = false;
     if (!data.length) throw Object.assign(new Error('Bu parite için veri yok'), { fatal: true });
     bars = data;
     const prec = SV.prec(bars[bars.length - 1].c);
@@ -156,6 +175,7 @@ async function load() {
     SV.trades.render(); SV.trades.syncLines(); SV.trades.refreshTickers();
     chart.timeScale().setVisibleLogicalRange({ from: bars.length - 200, to: bars.length + 12 });
     setAuto(true);
+    if (pendingFocus && pendingFocus.key === S.market + S.symbol) { showRange(pendingFocus.t0, pendingFocus.t1); pendingFocus = null; }
     hideMsg();
     header();
     setLive('wait', 'Canlı akışa bağlanıyor');
@@ -163,6 +183,16 @@ async function load() {
     loadHtf();
   } catch (e) {
     if (my !== wsToken) return;
+    if (e.fatal && S.market === 'spot' && !altTried) {
+      altTried = true;
+      const sym = S.symbol;
+      S.market = 'futures'; save();
+      SV.favs.fix(sym, 'spot', 'futures');
+      if (pendingFocus) pendingFocus.key = 'futures' + sym;
+      toast(`${sym} spotta yok`, 'Vadeli piyasaya geçildi.');
+      load();
+      return;
+    }
     setLive('err', 'Hata');
     if (e.fatal) showMsg('Parite bulunamadı', `${S.symbol} ${S.market === 'spot' ? 'spot' : 'vadeli'} piyasada yok.${S.market === 'spot' ? ' Altın, gümüş, bakır ve Brent sadece Vadeli\'de var.' : ''} (${e.message})`);
     else showMsg('Binance verisine ulaşılamadı', `İnternet bağlantını kontrol et. Bazı ülkelerde Binance API'si (özellikle vadeli) engelli olabilir. Dosya açılışında sorun olursa klasörde "python -m http.server" çalıştırıp localhost:8000/seviye.html adresinden aç. (${e.message})`);
@@ -276,6 +306,7 @@ function computeHtf() {
     if (htfRaw[k]) for (const a of SV.analysis.arcs(htfRaw[k], L, dist, now, last.c)) htf.arcs.push({ ...a, tf: k });
   }
   htf.arcs = ['sup', 'res'].map(kind => htf.arcs.filter(a => a.kind === kind).sort((x, y) => Math.abs(x.now - last.c) - Math.abs(y.now - last.c))[0]).filter(Boolean);
+  scenHist = res && res.ctx && (htfRaw['1M'] || htfRaw['1w']) ? SV.scen.history(bars, res.ctx, htfPair(), closedCount(), S.interval, S.market + S.symbol) : null;
   if (res && res.ctx && htfRaw['1M'] && htfRaw['1w']) {
     const z = SV.zones.resistanceSells(bars, res.ctx, { '1M': htfRaw['1M'], '1w': htfRaw['1w'] });
     res.signals = res.signals.filter(s => s.type !== 'zsell').concat(z).sort((a, b) => a.i - b.i);
@@ -299,22 +330,78 @@ function indexSignals() {
   }
 }
 
-let idea = null;
+let idea = null, scenHist = null, ideaAt = 0;
+const TFN = { '5m': '5d', '15m': '15d', '1h': '1s', '4h': '4s', '1d': '1G', '1w': '1H', '1M': '1A' };
+const closedCount = () => { const n = bars.length; return n && Date.now() / 1000 < bars[n - 1].t + STEP[S.interval] ? n - 1 : n; };
+const htfPair = () => ({ '1M': htfRaw['1M'], '1w': htfRaw['1w'] });
+const pctTxt = x => `%${(x * 100).toFixed(0)}`;
+const usdTxt = x => `${x >= 0 ? '+' : '−'}${Math.abs(Math.round(x))} $`;
+let btcM = null, btcAt = 0;
+async function loadBtcMonthly() {
+  if (btcM && Date.now() - btcAt < 6 * 3600e3) return;
+  for (const base of API.spot.rest) {
+    try {
+      const r = await fetch(`${base}?symbol=BTCUSDT&interval=1M&limit=200`);
+      if (!r.ok) continue;
+      btcM = (await r.json()).map(parse); btcAt = Date.now();
+      SV.scen.setMarket(btcM);
+      if (bars.length && res) { scenHist = null; computeHtf(); }
+      return;
+    } catch (e) {}
+  }
+}
+function scenStateTxt(sc, key) {
+  const sh = key === 'short';
+  if (sc.state === 'triggered') return ['go', `Giriş oluştu · ${sc.ago ? sc.ago + ' mum önce' : 'son kapanan mumda'}, ${SV.fmt(sc.plan.entry)} fiyatından${sc.tier ? ` · ${['', '$50', '$100', '$200'][sc.tier]} kademesi görüldü` : ''}`];
+  if (sc.state === 'inzone') return ['in', `Bölgede · mum bölgenin ${sh ? 'altında' : 'üstünde'} kapanırsa giriş oluşur`];
+  if (sc.state === 'near') return ['near', `Yaklaşıyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
+  if (sc.state === 'broken') return ['off', `Bölge kırıldı · fiyat bölgenin ${sh ? 'üstünde' : 'altında'}, senaryo geçersiz`];
+  return ['wait', `Bekleniyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
+}
+function scenCard(sc, key) {
+  const sh = key === 'short', title = sh ? 'Short senaryosu' : 'Long senaryosu';
+  if (!sc || !sc.plan) return `<div class="plan ${key}"><h3>${title}</h3><p class="note">Yakında (±%25) üst zaman dilimi ${sh ? 'direnci' : 'desteği'} yok.</p></div>`;
+  const p = sc.plan, st = sc.stats, [stc, stt] = scenStateTxt(sc, key), good = SV.scen.good(sc);
+  const pc = x => SV.pct((x - p.entry) / p.entry * 100);
+  const h = scenHist && scenHist[key] && scenHist[key][sc.strong ? 'strong' : 'base'];
+  const here = h && h.n ? `Bu grafiğin geçmişinde aynı tür (${sc.strong ? 'güçlü' : 'zayıf'}) ${h.n} işlem: $50+ ${pctTxt((h.n - h.t[0]) / h.n)}, ortalama ${usdTxt(h.usd / h.n)}.` : '';
+  const tier = good ? `<span class="tier ok">İyi kurulum · $50+ ${pctTxt(st.p50)}</span>` : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? 'az örnek' : 'piyasaya ters'}</span>` : `<span class="tier">Zayıf · $50+ ${pctTxt(st.p50)}</span>`;
+  const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu (${sc.done.ago} mum önce) bölgeden ${SV.pct(sc.done.gap * 100).replace('+', '')} uzakta, ${SV.fmt(sc.done.plan.entry)} fiyatında kapattı. Giriş için geç sayılır: backtest'te bölgeden 1 ATR'dan ya da %4'ten uzak kapanan mumlardan girişler zayıf çıktı.</p>` : sc.done ? `<p class="note">Son kurulum ${sc.done.state === 'full' ? '$200 kademesine ulaştı' : sc.done.state === 'be' ? `${['', '$50', '$100', '$200'][sc.done.tier]} kademesini görüp başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce, giriş ${SV.fmt(sc.done.plan.entry)}).</p>` : '';
+  const grp = `${sc.strong ? 'güçlü' : 'zayıf'} · piyasa ${sc.aligned ? 'yönünde' : 'yönüne ters'}`;
+  const split = st.tr != null ? ` Coin bölmesi: BTC/ETH/BNB ${pctTxt(st.tr)}, SOL/XRP ${pctTxt(st.te)}.` : '';
+  return `<div class="plan ${key}${sc.state === 'triggered' && good ? ' good' : ''}">
+    <h3>${title} ${tier}</h3>
+    <p class="st ${stc}">${stt}</p>${doneTxt}${sc.tested ? '' : `<p class="note down">Bu kural sadece 1s, 4s ve 1G grafiklerde test edildi; ${TFN[S.interval]} grafikte oranlar geçerli değil ve "iyi giriş" bildirimi gönderilmez.</p>`}
+    <p>${sh ? 'Fiyat dirence gelip iğne bırakır ve bölgenin altında kapatırsa o mumun kapanışından short.' : 'Fiyat desteğe inip iğne bırakır ve bölgenin üstünde kapatırsa o mumun kapanışından long.'} Stop girişin %5 ötesi (1.000 $'da −50 $). +%5'te üçte biri kapatılır ve stop girişe çekilir, +%10'da üçte biri, +%20'de kalanı.</p>
+    <p class="zn">Bölge: <span class="num">${SV.fmt(sc.zone.lo)}${sc.zone.hi > sc.zone.lo ? ' – ' + SV.fmt(sc.zone.hi) : ''}</span> · ${sc.zone.names.join(' + ')}</p>
+    <ul class="ck">${sc.checks.map(c => `<li class="${c.ok ? 'ok' : 'no'}${c.market ? ' mk' : ''}">${c.ok ? '✓' : '✗'} ${c.text}</li>`).join('')}</ul>
+    <dl><dt>Giriş${sc.state === 'triggered' ? '' : ' (tahmini)'}</dt><dd class="num">${SV.fmt(p.entry)}</dd>
+      <dt>Stop · −50 $</dt><dd class="num">${SV.fmt(p.stop)} <small>${pc(p.stop)}</small></dd>
+      <dt>Başarılı · +50 $</dt><dd class="num">${SV.fmt(p.lv[0])} <small>${pc(p.lv[0])} · ${pctTxt(st.p50)}</small></dd>
+      <dt>Çok başarılı · +100 $</dt><dd class="num">${SV.fmt(p.lv[1])} <small>${pc(p.lv[1])} · ${pctTxt(st.p100)}</small></dd>
+      <dt>Süper · +200 $</dt><dd class="num">${SV.fmt(p.lv[2])} <small>${pc(p.lv[2])} · ${pctTxt(st.p200)}</small></dd></dl>
+    <p class="note">Backtest (BTC, ETH, BNB, SOL, XRP · 1s/4s/1G, 30 gün): bu grup (${grp}) ${st.n} işlem; yüzdeler o kademeye stoptan önce ulaşma oranı. İşlem başına ortalama ${usdTxt(st.usd)} (1.000 $ için). Haftalık (7 gün) bakışta +50 $ oranı ${pctTxt(st.w7)}, ortalama ${usdTxt(st.usd7)}. Rastgele girişte +%5'in −%5'ten önce gelme oranı ≈ ${pctTxt(SV.scen.STATS.rand50)}.${split} ${here}${st.n < 60 ? ' <b>Örnek az, oranlar güvenilir değil.</b>' : ''}${!good && sc.strong && sc.aligned ? '' : ''}</p>
+    <button class="btn sm" data-plan="${key}">Bu planı grafiğe çiz</button></div>`;
+}
+function marketBox() {
+  const t = bars.length ? bars[bars.length - 1].t : Date.now() / 1000, rg = SV.scen.regime(t), M = SV.scen.STATS.market;
+  if (!rg) return '<p class="note">Piyasa yönü: BTC aylık verisi yükleniyor…</p>';
+  const bull = rg.dir > 0;
+  return `<div class="mkt ${bull ? 'bull' : 'bear'}"><b>Piyasa yönü: ${bull ? 'Boğa' : 'Ayı'}</b><span>BTC aylık kapanışı 10 aylık ortalamanın ${SV.pct(rg.dist * 100).replace('+', '')} ${bull ? 'üstünde' : 'altında'} · ${rg.since} aydır ${bull ? 'boğa' : 'ayı'}</span>
+    ${rg.next && rg.next.dir !== rg.dir ? `<span class="warn">BTC şu an ${SV.fmt(rg.next.price)}; bu ayın 10 aylık ortalaması ${SV.fmt(rg.next.sma)}. Ay böyle kapanırsa yön ${bull ? 'ayıya' : 'boğaya'} döner.</span>` : ''}
+    <small>Backtest (5 coin, günlük, 2018–2026): bu kural yön verdiğinde 90 gün içinde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} (2018–22) ve ${pctTxt(M.late.with)} (2023–26); ters yönde ${pctTxt(M.early.against)} ve ${pctTxt(M.late.against)}. 7–30 günlük hareketlerde belirgin fark yok. Yön değişimi ancak ay kapanışında olur.</small></div>`;
+}
 function renderIdea() {
   const box = $('idea');
   if (!bars.length || !res || !res.ctx) { box.innerHTML = '<p class="empty">Hesaplanıyor…</p>'; idea = null; return; }
-  const n = bars.length, last = bars[n - 1], price = last.c, a = res.ctx.atr[n - 1];
-  const list = [];
-  for (const tf of ['1M', '1w']) {
-    const H = htfRaw[tf];
-    if (H && H.length > 3) list.push(...SV.zones.now(SV.zones.build(H.slice(0, -1), tf, last.t, price), last.t, price, a));
-  }
-  for (const l of res.levels) list.push({ name: 'Grafik seviyesi', v: l.price });
-  const cl = SV.zones.clusters(list.filter(z => Math.abs(z.v - price) / price <= 0.25), price);
-  const R1 = cl.filter(c => c.lo > price + 0.2 * a).sort((x, y) => x.lo - y.lo)[0];
-  const S1 = cl.filter(c => c.hi < price - 0.2 * a).sort((x, y) => y.hi - x.hi)[0];
-  const IN = cl.find(c => price >= c.lo - 0.5 * a && price <= c.hi + 0.5 * a);
-  idea = { res: R1, sup: S1, inside: IN, atr: a };
+  if (!htfRaw['1M'] && !htfRaw['1w']) { box.innerHTML = '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'; idea = null; return; }
+  const n = bars.length, price = bars[n - 1].c;
+  const L = SV.scen.live(bars, res.ctx, htfPair(), closedCount(), S.market + S.symbol, S.interval);
+  if (!L) { box.innerHTML = '<p class="empty">Senaryo için yeterli geçmiş yok.</p>'; idea = null; return; }
+  const a = L.atr;
+  const mark = (c, sc, name) => c ? { ...c, label: name + (sc && sc.strong && sc.zone.lo === c.lo ? ' · güçlü' : '') } : null;
+  idea = { res: mark(L.R1, L.short, 'Direnç bölgesi'), sup: mark(L.S1, L.long, 'Destek bölgesi'), atr: a, live: L, plans: {} };
+  for (const k of ['short', 'long']) if (L[k] && L[k].plan) idea.plans[k] = { type: k, entry: L[k].plan.entry, stop: L[k].plan.stop, target: L[k].plan.lv[1] };
   const st = res.state || {}, since = t => { for (let k = res.signals.length - 1; k >= 0; k--) if (res.signals[k].type === t) return n - 1 - res.signals[k].i; return Infinity; };
   let score = 0; const why = [];
   if (st.main) { score += st.main === 'up' ? 1 : -1; why.push(`ana trend ${st.main === 'up' ? 'yukarı' : 'aşağı'}`); }
@@ -325,27 +412,18 @@ function renderIdea() {
   if (since('zsell') <= 10 || since('sell') <= 10) { score -= 1; why.push('son 10 mumda Sell/Direnç sinyali'); }
   if (since('buy') <= 10) { score += 1; why.push('son 10 mumda Buy sinyali'); }
   const bias = score >= 1.5 ? ['up', 'Yukarı eğilimli'] : score <= -1.5 ? ['down', 'Aşağı eğilimli'] : ['', 'Kararsız'];
-  const zs = res.stats.zsell, bs = res.stats.buy;
-  const edge = o => o && o.n ? `${o.n} sinyal, başarı %${Math.round(o.win / o.n * 100)}, rastgeleye göre ${(o.r - o.base) / o.n >= 0 ? '+' : ''}${((o.r - o.base) / o.n).toFixed(2).replace('.', ',')}R` : 'bu grafikte yeterli örnek yok';
-  const band = c => `<span class="num">${SV.fmt(c.lo)}${c.hi > c.lo ? ' – ' + SV.fmt(c.hi) : ''}</span> <span class="num ${c.dist >= 0 ? 'up' : 'down'}">(${SV.pct(c.dist * 100)})</span>`;
-  const plan = (type, entry, stop, target) => {
-    const rr = Math.abs(target - entry) / Math.abs(stop - entry);
-    return { type, entry, stop, target, rr };
-  };
-  const shortP = R1 ? plan('short', R1.lo, R1.hi + 0.5 * a, S1 ? S1.hi : R1.lo - 2 * (R1.hi + 0.5 * a - R1.lo)) : null;
-  const longP = S1 ? plan('long', S1.hi, S1.lo - 0.5 * a, R1 ? R1.lo : S1.hi + 2 * (S1.hi - S1.lo + 0.5 * a)) : null;
-  idea.plans = { short: shortP, long: longP };
-  const planHtml = (p, title, cond, stat) => p ? `<div class="plan ${p.type}"><h3>${title}</h3><p>${cond}</p><dl><dt>Giriş bölgesi</dt><dd class="num">${SV.fmt(p.entry)}</dd><dt>Stop</dt><dd class="num">${SV.fmt(p.stop)}</dd><dt>Hedef</dt><dd class="num">${SV.fmt(p.target)}</dd><dt>Risk/ödül</dt><dd class="num">1 : ${p.rr.toFixed(1).replace('.', ',')}</dd></dl><p class="note">${stat}</p><button class="btn sm" data-plan="${p.type}">Bu planı grafiğe çiz</button></div>` : '';
+  const band = c => `<span class="num">${SV.fmt(c.lo)}${c.hi > c.lo ? ' – ' + SV.fmt(c.hi) : ''}</span> <span class="num ${c.mid >= price ? 'up' : 'down'}">(${SV.pct((c.mid - price) / price * 100)})</span>`;
+  ideaAt = Date.now();
   box.innerHTML = `
-    <p class="bias ${bias[0]}"><b>${bias[1]}</b>${why.length ? ' · ' + why.join(', ') : ''}</p>
-    ${IN ? `<p class="alert">Fiyat şu an <b>${IN.names.join(' + ')}</b> bölgesinde. ${IN.mid >= price ? 'Üst iğne bırakıp bölgenin altında kapatırsa uygulama "Direnç" sinyali verir.' : 'Bölgenin altı süpürülüp geri alınır ve sonraki mum yukarı kapatırsa Buy kurulumu oluşur.'}</p>` : ''}
+    ${marketBox()}
+    <p class="bias ${bias[0]}">Bu grafikte kısa vade: <b>${bias[1]}</b>${why.length ? ' · ' + why.join(', ') : ''}</p>
     <dl class="zl">
-      <dt>En yakın direnç</dt><dd>${R1 ? band(R1) + '<br><small>' + R1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
-      <dt>En yakın destek</dt><dd>${S1 ? band(S1) + '<br><small>' + S1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
+      <dt>En yakın direnç</dt><dd>${L.R1 ? band(L.R1) + '<br><small>' + L.R1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
+      <dt>En yakın destek</dt><dd>${L.S1 ? band(L.S1) + '<br><small>' + L.S1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
     </dl>
-    ${planHtml(shortP, 'Short senaryosu', `Fiyat direnç bölgesine gelir, üst iğne bırakıp bölgenin altında kapatırsa.`, `Bu grafikte üst zaman dilimi direnç reddi: ${edge(zs)}.`)}
-    ${planHtml(longP, 'Long senaryosu', `Fiyat destek bölgesine iner, dibi süpürüp geri alır ve sonraki mum yukarı kapatırsa (Buy sinyali).`, `Bu grafikte Buy: ${edge(bs)}. Backtest'te destekten tepkiler dirençlerdeki redler kadar güvenilir çıkmadı; onay mumunu beklemek önemli.`)}
-    <p class="note">Senaryolar geçmiş veriye ve hesaplanan bölgelere dayanır; yatırım tavsiyesi değildir. Kararı sen verirsin.</p>`;
+    ${scenCard(L.short, 'short')}
+    ${scenCard(L.long, 'long')}
+    <p class="note">Bölgeler aylık ve haftalık grafikteki trend, parabolik yay ve seviyelerden gelir. Panel 15 saniyede bir güncellenir (son: ${new Date(ideaAt).toLocaleTimeString('tr-TR')}). Yatırım tavsiyesi değildir; kararı sen verirsin.</p>`;
 }
 const notified = {};
 let sigSeen = { key: '', i: Infinity };
@@ -367,10 +445,19 @@ function notify(title, body, key, coolMs = 3 * 3600e3) {
   try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body, tag: key }); } catch (e) {}
 }
 function checkAlerts() {
-  if (!S.notify || !idea || !bars.length) return;
-  const p = bars[bars.length - 1].c, a = idea.atr, near = Math.min(0.5 * a, p * 0.006);
-  if (idea.res && p >= idea.res.lo - near) notify(`${S.symbol} dirence yaklaştı`, `Fiyat ${SV.fmt(p)}. Bölge ${SV.fmt(idea.res.lo)}: ${idea.res.names.join(' + ')}. Red mumu gelirse short senaryosu.`, `r${S.symbol}${S.interval}${Math.round(idea.res.lo)}`);
-  if (idea.sup && p <= idea.sup.hi + near) notify(`${S.symbol} desteğe yaklaştı`, `Fiyat ${SV.fmt(p)}. Bölge ${SV.fmt(idea.sup.hi)}: ${idea.sup.names.join(' + ')}. Dip süpürülüp onay gelirse long senaryosu.`, `s${S.symbol}${S.interval}${Math.round(idea.sup.hi)}`);
+  if (!S.notify || !idea || !idea.live || !bars.length) return;
+  const L = idea.live, tf = TFN[S.interval];
+  for (const key of ['short', 'long']) {
+    const sc = L[key];
+    if (!sc || !sc.plan) continue;
+    const sh = key === 'short', p = sc.plan, st = sc.stats;
+    if (sc.state === 'triggered' && SV.scen.good(sc)) {
+      notify(`${S.symbol} ${tf}: iyi ${sh ? 'short' : 'long'} girişi`, `Giriş ${SV.fmt(p.entry)} · stop ${SV.fmt(p.stop)} (−50 $) · +50 $ ${SV.fmt(p.lv[0])} · +100 $ ${SV.fmt(p.lv[1])} · +200 $ ${SV.fmt(p.lv[2])}. Geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}, piyasa yönünde.`, `e${S.symbol}${S.interval}${key}${bars[sc.i].t}`, 864e5);
+    } else if (sc.state === 'near' || sc.state === 'inzone') {
+      const edge = sh ? sc.zone.lo : sc.zone.hi;
+      notify(`${S.symbol} ${tf}: ${sh ? 'dirence' : 'desteğe'} yaklaştı`, `Fiyat ${SV.fmt(L.price)}, bölge ${SV.fmt(edge)} (${sc.zone.names.join(' + ')}). ${SV.scen.good(sc) ? `İyi kurulum, geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}.` : sc.strong ? 'Güçlü kurulum ama piyasa yönüne ters ya da örnek az.' : 'Zayıf kurulum.'} ${sh ? 'Bölgenin altında' : 'Bölgenin üstünde'} kapanış gelirse giriş oluşur.`, `z${S.symbol}${S.interval}${key}${Math.round(edge)}`);
+    }
+  }
 }
 function checkSignalAlerts() {
   if (!res || !bars.length) return;
@@ -391,7 +478,7 @@ $('notifyBtn').addEventListener('click', async () => {
   if (!S.notify) return;
   let perm = 'denied';
   try { perm = 'Notification' in window ? (Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission) : 'denied'; } catch (e) {}
-  toast('Bildirimler açık', perm === 'granted' ? 'Bölgelere yaklaşınca ve yeni sinyal gelince haber vereceğim. Sayfa açık kalmalı.' : 'Tarayıcı bildirim izni yok; uyarılar sadece bu sayfada görünecek. baslat.bat ile açınca izin verilebilir.');
+  toast('Bildirimler açık', perm === 'granted' ? 'Bölgelere yaklaşınca, iyi giriş oluşunca (açık grafik ve favoriler) ve yeni sinyal gelince haber vereceğim. Sayfa açık kalmalı.' : 'Tarayıcı bildirim izni yok; uyarılar sadece bu sayfada görünecek. baslat.bat ile açınca izin verilebilir.');
   checkAlerts();
 });
 
@@ -730,6 +817,7 @@ function syncQuick() {
     b.setAttribute('aria-pressed', on);
   }
   for (const b of $('domSeg').children) b.setAttribute('aria-pressed', b.dataset.d === S.dom);
+  SV.favs.sync();
 }
 
 function syncUi() {
@@ -805,6 +893,7 @@ $('openGuide').addEventListener('click', () => {
 $('closeGuide').addEventListener('click', () => $('guide').close());
 $('guide').addEventListener('click', e => { if (e.target === $('guide')) $('guide').close(); });
 setInterval(() => { if (bars.length && S.view === 'chart') loadHtf(); }, 600000);
+setInterval(() => { if (bars.length && res && res.ctx && Date.now() - ideaAt >= 14000) { renderIdea(); checkAlerts(); overlay.invalidate(); } }, 15000);
 async function catchUp() {
   const my = wsToken;
   if (!bars.length) return;
@@ -848,8 +937,19 @@ SV.trades.init({
   cur: () => ({ symbol: S.symbol, market: S.market }),
   layer: () => !!S.layers.pos,
   goTo: (m, s) => go(m, s),
+  focus: focusTrade,
   resized: () => overlay.invalidate()
 });
+function openTf(m, s, tf) {
+  const same = m === S.market && s === S.symbol, ch = tf !== S.interval;
+  S.interval = tf; save();
+  if (same) { setView('chart'); if (ch) load(); }
+  else go(m, s);
+}
+loadBtcMonthly();
+setInterval(loadBtcMonthly, 3600e3);
+SV.scan.init({ cur: () => ({ symbol: S.symbol, market: S.market, interval: S.interval }), notify, open: openTf });
+SV.favs.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view }), toast: t => toast(t, '') });
 renderNotifyBtn();
 theme();
 syncUi();
