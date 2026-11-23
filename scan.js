@@ -96,7 +96,7 @@ SV.scan = (() => {
       return `<li><button data-k="${k}" class="${r.sc.state === 'triggered' && g ? 'hot' : ''}">
         <span class="tag ${sh ? 'sell' : 'buy'}">${sh ? 'Short' : 'Long'}</span>
         <b>${r.f.s.replace(/USDT$/, '')} ${TFN[r.tf]}</b>
-        <span class="why">${stateTxt(r.sc)} · ${g ? 'iyi kurulum' : r.sc.aligned ? 'güçlü, örnek az' : 'güçlü, piyasa yönüne ters'} · +50 $ %${Math.round(r.sc.stats.p50 * 100)}</span>
+        <span class="why">${stateTxt(r.sc)} · ${g ? 'iyi kurulum' : r.sc.aligned ? 'güçlü, doğrulamada zayıf' : 'güçlü, piyasa yönüne ters'} · +50 $ %${Math.round(r.sc.stats.p50 * 100)}</span>
       </button></li>`;
     }).join('') : '<li class="empty">Şu an favorilerde güçlü kurulum yok.</li>') + (weak ? `<li class="empty">${weak} zayıf kurulum (koşulların hepsi tutmayan) listelenmedi.</li>` : '');
   }

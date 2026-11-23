@@ -300,10 +300,11 @@ function computeHtf() {
   if (!bars.length) return;
   const last = bars[bars.length - 1], now = last.t + STEP[S.interval];
   htf = {};
-  for (const [k, L, dist] of HTF) if (htfRaw[k]) htf[k] = SV.analysis.htfTrends(htfRaw[k], L, dist, now, last.c);
+  const closedH = k => { const H = htfRaw[k]; return H && H.length > 1 && H[H.length - 1].t + STEP[k] > Date.now() / 1000 ? H.slice(0, -1) : H; };
+  for (const [k, L, dist] of HTF) if (htfRaw[k]) htf[k] = SV.analysis.htfTrends(closedH(k), L, dist, now, last.c);
   htf.arcs = [];
   for (const [k, L, dist] of [['1M', 2, 0.35], ['1w', 3, 0.25]]) {
-    if (htfRaw[k]) for (const a of SV.analysis.arcs(htfRaw[k], L, dist, now, last.c)) htf.arcs.push({ ...a, tf: k });
+    if (htfRaw[k]) for (const a of SV.analysis.arcs(closedH(k), L, dist, now, last.c)) htf.arcs.push({ ...a, tf: k });
   }
   htf.arcs = ['sup', 'res'].map(kind => htf.arcs.filter(a => a.kind === kind).sort((x, y) => Math.abs(x.now - last.c) - Math.abs(y.now - last.c))[0]).filter(Boolean);
   scenHist = res && res.ctx && (htfRaw['1M'] || htfRaw['1w']) ? SV.scen.history(bars, res.ctx, htfPair(), closedCount(), S.interval, S.market + S.symbol) : null;
@@ -356,6 +357,11 @@ function scenStateTxt(sc, key) {
   if (sc.state === 'inzone') return ['in', `Bölgede · mum bölgenin ${sh ? 'altında' : 'üstünde'} kapanırsa giriş oluşur`];
   if (sc.state === 'near') return ['near', `Yaklaşıyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
   if (sc.state === 'broken') return ['off', `Bölge kırıldı · fiyat bölgenin ${sh ? 'üstünde' : 'altında'}, senaryo geçersiz`];
+  if (sc.state === 'late') return ['off', 'Ret mumu bölgeden çok uzakta kapattı · giriş için geç'];
+  if (sc.state === 'stop') return ['off', `Son kurulum stop oldu (${sc.ago} mum önce)`];
+  if (sc.state === 'be') return ['off', `Son kurulum kâr aldı, kalanı başabaşta kapandı (${sc.ago} mum önce)`];
+  if (sc.state === 'full') return ['off', `Son kurulum +200 $ oldu (${sc.ago} mum önce)`];
+  if (sc.distA == null) return ['wait', 'Bekleniyor'];
   return ['wait', `Bekleniyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
 }
 function scenCard(sc, key) {
@@ -363,11 +369,11 @@ function scenCard(sc, key) {
   if (!sc || !sc.plan) return `<div class="plan ${key}"><h3>${title}</h3><p class="note">Yakında (±%25) üst zaman dilimi ${sh ? 'direnci' : 'desteği'} yok.</p></div>`;
   const p = sc.plan, st = sc.stats, [stc, stt] = scenStateTxt(sc, key), good = SV.scen.good(sc);
   const h = scenHist && scenHist[key] && scenHist[key][sc.strong ? 'strong' : 'base'];
-  const tier = good ? '<span class="tier ok">İyi kurulum</span>' : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? 'az örnek' : 'piyasaya ters'}</span>` : '<span class="tier">Zayıf</span>';
+  const tier = good ? '<span class="tier ok">İyi kurulum</span>' : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? (sc.stats.n < 60 ? 'az örnek' : 'doğrulamada zayıf') : 'piyasaya ters'}</span>` : '<span class="tier">Zayıf</span>';
   const tierName = ['', '+50 $', '+100 $', '+200 $'];
   const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu bölgeden çok uzakta kapattı; giriş için geç.</p>`
     : sc.done ? `<p class="note">Son kurulum: ${sc.done.state === 'full' ? '+200 $ oldu' : sc.done.state === 'be' ? `${tierName[sc.done.tier]} görüldü, kalanı başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce).</p>` : '';
-  const ck = { 0: '2+ kaynak', 1: 'Trend/parabolik', 2: sh ? 'SMA200 altı' : 'SMA200 üstü' };
+  const ck = { 0: '2+ kaynak', 1: sh ? 'SMA200 altı' : 'SMA200 üstü' };
   const checks = sc.checks.map((c, k) => `<li class="${c.ok ? 'ok' : 'no'}" title="${c.text}">${c.ok ? '✓' : '✗'} ${c.market ? 'Piyasa yönünde' : ck[k]}</li>`).join('');
   const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
   const split = st.tr != null ? ` Coin bölmesi: BTC/ETH/BNB ${pctTxt(st.tr)}, SOL/XRP ${pctTxt(st.te)}.` : '';
@@ -401,6 +407,9 @@ function marketBox() {
     <details class="how" data-k="mkt"><summary>Nasıl belirleniyor?</summary><p>BTC aylık kapanışı 10 aylık ortalamanın üstünde ve ortalama 2 ayda yükselmişse boğa, altında ve düşmüşse ayı; çelişirse önceki yön korunur. Sadece ay kapanışında değişir. Backtest (5 coin, 2018–2026): 90 günde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} / ${pctTxt(M.late.with)} (2018–22 / 2023–26), ters yön ${pctTxt(M.early.against)} / ${pctTxt(M.late.against)}. 8 yılda ${M.flips} kez yön değiştirdi.</p></details></div>`;
 }
 function renderIdea() {
+  try { renderIdeaInner(); } catch (e) { $('idea').innerHTML = '<p class="empty">Senaryo hesaplanamadı.</p>'; idea = null; console.error(e); }
+}
+function renderIdeaInner() {
   const box = $('idea');
   if (!bars.length || !res || !res.ctx) { box.innerHTML = '<p class="empty">Hesaplanıyor…</p>'; idea = null; return; }
   if (!htfRaw['1M'] && !htfRaw['1w']) { box.innerHTML = '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'; idea = null; return; }
@@ -535,7 +544,7 @@ function renderLevels() {
         lineWidth: 1,
         lineStyle: l.touches >= 3 ? LWC.LineStyle.Solid : LWC.LineStyle.Dashed,
         axisLabelVisible: true,
-        title: `${r ? 'Direnç' : 'Destek'} ×${l.touches}`
+        title: ''
       });
     });
   }

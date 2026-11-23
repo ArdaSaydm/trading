@@ -295,19 +295,19 @@ Sağ panelin en üstünde. Kullanıcının istekleri: senaryolar backtest ile de
 - **Tetik:** Short: mum bölgenin alt kenarına 0,25 ATR yaklaşır ya da içine girer ve bölgenin altında kapatır; giriş o mumun kapanışı. Long tersi. Aynı yönde 6 mumdan sık sayılmaz. **Kapanış bölge kenarından 1 ATR'dan ya da %4'ten uzaksa "giriş için geç"** (kullanıcının haftalık grafikte 76.303'teki bölgeden %14 aşağıda 65.351 girişi görmesi üzerine eklendi; backtest'te bu girişler +50 $ %46, ortalama negatif).
 - **Plan (kullanıcının kademeleri):** stop girişin %5 ötesi (−50 $). +%5'te 1/3 kapatılır ve stop girişe çekilir, +%10'da 1/3, +%20'de kalan. 30 gün ufuk. Henüz tetiklenmemiş planda giriş bölge kenarından 0,4 ATR içeride tahmin edilir.
 - **Güçlü kurulum** = bölgede en az 2 kaynak + en az biri trend/parabolik + fiyat SMA200'ün lehte tarafında. Dördüncü satır piyasa yönü. **İyi kurulum** (bildirim) = güçlü + piyasa yönünde + backtest +50 $ oranı ≥ %60 + en az 60 örnek + test edilmiş zaman dilimi (1s/4s/1G).
-- **Backtest sonuçları** (30 gün, yukarıdaki plan, 1s/4s/1G, 5 coin, yeni piyasa yönü kuralıyla; `regime8b.js`, coin bölmesi `regime10b.js`). Rastgele girişte ±%5'te önce hedef ≈ %50:
-  | Grup | n | +50 $ | +100 $ | +200 $ | ort. $/işlem | 7 gün +50 $ |
-  |---|---|---|---|---|---|---|
-  | Short güçlü · piyasa yönünde | 120 | %63 | %37 | %26 | +21 | %61 |
-  | Short güçlü · ters | 27 | %63 | %19 | %15 | +9 | %63 |
-  | Short zayıf · yönünde | 1076 | %56 | %35 | %21 | +16 | %47 |
-  | Short zayıf · ters | 840 | %48 | %25 | %11 | −1 | %44 |
-  | Long güçlü · yönünde | 59 | %66 | %42 | %14 | +23 | %49 |
-  | Long güçlü · ters | 47 | %77 | %51 | %21 | +47 | %38 |
-  | Long zayıf · yönünde | 873 | %54 | %29 | %17 | +8 | %46 |
-  | Long zayıf · ters | 1168 | %40 | %17 | %5 | −12 | %32 |
-  - Zayıf kurulumlarda piyasa yönü belirgin fark yaratıyor (short %56 / %48, long %54 / %40). Güçlülerde örnek az ve coin bölmesi tutarsız: short güçlü yönünde BTC/ETH/BNB %54, SOL/XRP %82; long güçlü yönünde %74 / %38. Veri çoğunlukla 2023–26.
-  - "İyi kurulum" şu an sadece short (güçlü + yönünde, n 120); long güçlü yönünde 59 örnekle 60 eşiğinin altında.
+- **Backtest sonuçları** (30 gün, yukarıdaki plan, 1s/4s/1G, 5 coin, yeni piyasa yönü ve 3 temaslı trendlerle; `regime11.js` V=B). Rastgele girişte ±%5'te önce hedef ≈ %50:
+  | Grup | n | +50 $ | +100 $ | +200 $ | ort. $/işlem | 7 gün +50 $ | BTC/ETH/BNB · SOL/XRP |
+  |---|---|---|---|---|---|---|---|
+  | Short güçlü · piyasa yönünde | 110 | %72 | %45 | %37 | +38 | %70 | %74 · %61 |
+  | Short güçlü · ters | 40 | %55 | %23 | %15 | +4 | %50 | %54 · %58 |
+  | Short zayıf · yönünde | 915 | %54 | %35 | %22 | +14 | %46 | |
+  | Short zayıf · ters | 724 | %47 | %24 | %9 | −3 | %42 | |
+  | Long güçlü · yönünde | 78 | %64 | %38 | %21 | +25 | %45 | %69 · %47 |
+  | Long güçlü · ters | 68 | %46 | %18 | %3 | −10 | %41 | %52 · %32 |
+  | Long zayıf · yönünde | 805 | %54 | %30 | %15 | +7 | %45 | |
+  | Long zayıf · ters | 1058 | %42 | %18 | %6 | −9 | %33 | |
+  - "İyi kurulum" şu an sadece short (güçlü + yönünde). Long güçlü yönünde doğrulama grubunda %47.
+  - Uyarı: "güçlü" tanımının alternatifleri (trend/parabolik şartlı, kaynak sayısı şartsız) küçük değişikliklerde %56–85 arasında oynadı; örnekler az ve çoğu 2023–26.
 - **Durumlar:** Bekleniyor, Yaklaşıyor (≤ %1,2 ya da ≤ 1,5 ATR ve ≤ %5), Bölgede, Giriş oluştu (son 3 kapanmış mumda; görülen kademe yazar), Bölge kırıldı; son kurulum için not (kademe/başabaş/stop/geç kalındı). 1s/4s/1G dışındaki zaman dilimlerinde "test edilmedi" uyarısı.
 - Bekleyen senaryonun bölgeleri güncel fiyata göre seçilir (aylık grafikte açık ay %20 hareket edebildiği için). Tetik kontrolü backtest'teki gibi önceki kapanışa göredir. Senaryo en az 30 kapanmış mumla çalışır; SMA200 yoksa o koşul ✗ ve açıklamalı (aylık grafik).
 - Panel bu grafiğin geçmişindeki aynı kuralın sonucunu da gösterir (`SV.scen.history`, aynı plan). 15 saniyede bir yeniden çizilir.
@@ -381,9 +381,15 @@ Panelde gösterilir. Her satır, aynı kuralla her 2 mumda bir rastgele açılan
 
 ### Üst zaman dilimi trend çizgileri (`htfTrends`)
 
-- Pivot genişliği: aylık 2, haftalık 3, günlük 5. Son 14 pivotun çiftleri denenir. Eğim zamana göre hesaplanır (fiyat/saniye), bu yüzden çizgi her grafik zaman diliminde doğru yerde çizilir.
-- Geçerlilik: ilk pivottan bugüne kapanışlar çizgiyi 0,3 ATR'den fazla geçmemiş olmalı.
-- Sadece bugünkü değeri fiyata yakın olanlar gösterilir: aylık ±%30, haftalık ±%15, günlük ±%8. Her zaman dilimi ve yön için en fazla bir çizgi.
+Kullanıcının kuralı (2026-11): geçerli bir yükselen trend için 1. dip, 2. daha yüksek dip, 3. daha yüksek dip gerekir; düşende tersi. Eski sürüm iki noktayla çiziyor ve aylık grafikte ATR çok büyük olduğu için kırılmış çizgileri geçerli sayıyordu.
+
+- Pivot genişliği: aylık 2, haftalık 3, günlük 5. Son 24 pivotun çiftleri denenir; çizgi hem doğrusal hem logaritmik fiyatta denenir, hangisi daha çok temasla geçerliyse o seçilir (eşitlikte doğrusal).
+- **En az 3 temas:** ilk iki nokta çizgiyi kurar, en az bir pivot daha çizgiye tolerans içinde değmeli. Temaslar yükselen trendde sırayla daha yüksek dip, düşende daha alçak tepe olmalı ve aralarında en az pivot genişliği kadar mum olmalı.
+- **Tolerans:** 0,25 ATR, ama en az %0,4 ve en fazla %2,5 (aylıkta da gevşemez).
+- **Kırılma:** ilk temastan bugüne bir mum kapanışı çizginin ötesine toleranstan fazla geçerse çizgi geçersiz. İğneler 3 katı toleransa kadar taşabilir. Henüz kapanmamış aylık/haftalık mum hesaba katılmaz (kırılma ancak kapanışta).
+- Sadece bugünkü değeri fiyata yakın olanlar gösterilir: aylık ±%30, haftalık ±%15, günlük ±%8. Her zaman dilimi ve yön için en fazla bir çizgi. Temas noktaları grafikte küçük noktayla işaretlenir. Logaritmik çizgi doğrusal grafikte (ya da tersi) eğri olarak çizilir.
+- Parabolik yayların toleransı da en fazla %2,5'e indirildi (önce aylıkta %7'ye çıkabiliyordu).
+- Bu değişiklikle senaryolardaki "güçlü kurulum" tanımı yeniden test edildi: "bölgede trend/parabolik şartı" yeni çizgilerle küçük örnekte oynak çıktığı için kaldırıldı; güçlü = bölgede en az 2 kaynak + SMA200 lehte (en başından beri istikrarlı çıkan kural).
 
 ### Formasyonlar (`patterns.js`)
 
@@ -446,6 +452,8 @@ Kullanıcının örneklerindeki gibi uzun vadeli kavisli destek/direnç çizgisi
 | `layers` | bs, zone, idea, react, big, ltb, rev, pat, para, htf1M, htf1w, htf1d, levels, vol, pos, hist açık; sma kapalı |
 | `layersOpen` | true (700 pikselden dar ekranda ilk açılışta false) |
 | `view`, `dom` | `chart`, `CRYPTOCAP:BTC.D` |
+
+- **Trend ve direnç yazıları kaldırıldı** (kullanıcı: "çizgileri görmem yeterli", "bütün trendlerde ve dirençlerde yazıları kaldır"): aylık/haftalık/günlük trend etiketleri, parabolik yay etiketi (bugünkü değer noktası ve kırılma oku kaldı), destek/direnç fiyat çizgilerinin başlığı (eksende sadece fiyat) ve fikir bölgesi bant etiketleri. Kalınlık zaman dilimini (1,4 / 1,1 / 0,8 px), renk yönü (turuncu düşen, turkuaz yükselen, kırmızı direnç, yeşil destek) gösterir. Sinyal etiketleri (Buy/Sell/Direnç reddi, P, Tepki) ve formasyon etiketleri duruyor.
 
 ## Grafik kütüphanesi
 

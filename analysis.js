@@ -47,29 +47,44 @@ SV.analysis = (() => {
 
   function htfTrends(bars, L, maxDist, nowT, lastPrice) {
     const n = bars.length;
-    if (n < L * 4 + 4) return [];
-    const A = atr(bars);
-    const piv = pivots(bars, L);
+    if (n < L * 6 + 6) return [];
+    const A = atr(bars), piv = pivots(bars, L);
+    const tolAt = k => Math.min(0.025, Math.max(0.004, 0.25 * (A[k] || 0) / bars[k].c));
     const pick = (list, dir) => {
-      const P = list.filter(x => x.i + L < n).slice(-14);
+      const P = list.filter(x => x.i + L < n).slice(-24);
       let best = null;
-      for (let a = 0; a < P.length; a++) {
-        for (let b = a + 1; b < P.length; b++) {
+      for (const log of [false, true]) {
+        const Y = log ? Math.log : v => v, inv = log ? Math.exp : v => v;
+        for (let a = 0; a < P.length; a++) for (let b = a + 1; b < P.length; b++) {
           const pa = P[a], pb = P[b];
           if (pb.i - pa.i < L * 2) continue;
-          if (dir < 0 ? pb.p >= pa.p : pb.p <= pa.p) continue;
-          const ta = bars[pa.i].t, m = (pb.p - pa.p) / (bars[pb.i].t - ta), f = t => pa.p + m * (t - ta);
+          if (dir > 0 ? pb.p <= pa.p : pb.p >= pa.p) continue;
+          const ta = bars[pa.i].t, ya = Y(pa.p), m = (Y(pb.p) - ya) / (bars[pb.i].t - ta);
+          const at = t => inv(ya + m * (t - ta));
           let ok = true;
           for (let k = pa.i + 1; k < n && ok; k++) {
-            const tol = A[k] * 0.3, v = f(bars[k].t);
-            if (dir < 0 ? bars[k].c > v + tol : bars[k].c < v - tol) ok = false;
-            if (k < pb.i && (dir < 0 ? bars[k].h > v + 2 * tol : bars[k].l < v - 2 * tol)) ok = false;
+            const v = at(bars[k].t), tol = tolAt(k);
+            if (!(v > 0)) { ok = false; break; }
+            const cl = (bars[k].c - v) / v, wk = ((dir > 0 ? bars[k].l : bars[k].h) - v) / v;
+            if (dir > 0 ? cl < -tol : cl > tol) ok = false;
+            else if (dir > 0 ? wk < -3 * tol : wk > 3 * tol) ok = false;
           }
-          const now = f(nowT);
-          if (!ok || now <= 0 || Math.abs(now - lastPrice) / lastPrice > maxDist) continue;
-          const touches = P.filter(x => x.i >= pa.i && Math.abs(x.p - f(bars[x.i].t)) <= A[x.i] * 0.4).length;
-          const score = touches * 2 + (pb.i - pa.i) / n + pb.i / n;
-          if (!best || score > best.score) best = { dir, t1: ta, p1: pa.p, m, touches, score, now };
+          if (!ok) continue;
+          const now = at(nowT);
+          if (!(now > 0) || Math.abs(now - lastPrice) / lastPrice > maxDist) continue;
+          const pts = [];
+          for (const x of P) {
+            if (x.i < pa.i) continue;
+            const v = at(bars[x.i].t);
+            if (Math.abs(x.p - v) / v > tolAt(x.i)) continue;
+            if (pts.length && x.i - pts[pts.length - 1].i < L) continue;
+            if (pts.length && (dir > 0 ? x.p <= pts[pts.length - 1].p : x.p >= pts[pts.length - 1].p)) continue;
+            pts.push(x);
+          }
+          if (pts.length < 3) continue;
+          const last = pts[pts.length - 1].i;
+          const score = pts.length * 2 + (last - pa.i) / n + last / n - (log ? 0.01 : 0);
+          if (!best || score > best.score) best = { dir, log, t1: ta, t2: bars[last].t, y1: ya, m, touches: pts.length, pts: pts.map(x => ({ t: bars[x.i].t, p: x.p })), score, now, at };
         }
       }
       return best;
@@ -82,7 +97,7 @@ SV.analysis = (() => {
     if (n < 40) return [];
     const A = atr(bars), piv = pivots(bars, L), lg = Math.log;
     const T0 = bars[0].t, SC = (bars[n - 1].t - T0) || 1, u = t => (t - T0) / SC;
-    const tolAt = k => Math.max(0.004, 0.35 * A[k] / bars[k].c);
+    const tolAt = k => Math.min(0.025, Math.max(0.004, 0.35 * A[k] / bars[k].c));
     const solve = (pts) => {
       const [[x1, y1], [x2, y2], [x3, y3]] = pts;
       const d = (x1 - x2) * (x1 - x3) * (x2 - x3);

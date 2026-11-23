@@ -28,7 +28,7 @@ SV.zones = (() => {
     const L = PIV[tf], out = [];
     if (bars.length < L * 6 + 10) return out;
     for (const t of SV.analysis.htfTrends(bars, L, 0.6, nowT, price)) {
-      out.push({ tf, kind: 'trend', name: `${TFN[tf]} ${t.dir < 0 ? 'düşen' : 'yükselen'} trend`, touches: t.touches, f: x => t.p1 + t.m * (x - t.t1) });
+      out.push({ tf, kind: 'trend', name: `${TFN[tf]} ${t.dir < 0 ? 'düşen' : 'yükselen'} trend`, touches: t.touches, f: t.at });
     }
     for (const q of SV.analysis.arcs(bars, L, 0.6, nowT, price)) {
       out.push({ tf, kind: 'arc', name: `${TFN[tf]} parabolik ${q.kind === 'sup' ? 'destek' : 'direnç'}`, touches: q.touches, f: x => Math.exp(q.c0 + q.c1 * (x - q.T0) / q.SC + q.c2 * ((x - q.T0) / q.SC) ** 2) });

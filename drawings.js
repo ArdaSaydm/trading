@@ -185,17 +185,25 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
       }
     };
     const htf = get().htf || {};
-    const TF = [['1M', 'Aylık', 1.4], ['1w', 'Haftalık', 1.1], ['1d', 'Günlük', 0.8]];
-    for (const [k, name, lw] of TF) {
+    const TF = [['1M', 1.4], ['1w', 1.1], ['1d', 0.8]];
+    for (const [k, lw] of TF) {
       if (!S.layers['htf' + k] || !htf[k]) continue;
       for (const t of htf[k]) {
         const ta = Math.max(t.t1, bars[0].t), tb = bars[n - 1].t + 60 * get().step;
-        const x1 = Xt(ta), x2 = Xt(tb), y1 = Y(t.p1 + t.m * (ta - t.t1)), y2 = Y(t.p1 + t.m * (tb - t.t1));
-        if ([x1, x2, y1, y2].some(v => v == null)) continue;
-        const col = t.dir < 0 ? '#ff6d3a' : '#20c5b5';
-        line(x1, y1, x2, y2, col, lw);
-        const lx = Math.min(W - 80, X(n - 1) + 40), ly = y1 + (y2 - y1) * ((lx - x1) / (x2 - x1 || 1));
-        label(`${name} ${t.dir < 0 ? 'düşen' : 'yükselen'}`, lx, ly - 14, col);
+        const col = t.dir < 0 ? '#ff6d3a' : '#20c5b5', N = !!t.log !== !!S.log ? 48 : 1;
+        g.strokeStyle = col; g.lineWidth = lw; g.setLineDash([]); g.beginPath();
+        let first = true;
+        for (let q = 0; q <= N; q++) {
+          const tt = ta + (tb - ta) * q / N, x = Xt(tt), y = Y(t.at(tt));
+          if (x == null || y == null) continue;
+          if (first) { g.moveTo(x, y); first = false; } else g.lineTo(x, y);
+        }
+        g.stroke();
+        for (const pt of t.pts) {
+          const x = Xt(pt.t), y = Y(pt.p);
+          if (x == null || y == null) continue;
+          g.fillStyle = col; g.beginPath(); g.arc(x, y, lw + 1.6, 0, Math.PI * 2); g.fill();
+        }
       }
     }
     if (S.layers.para && htf.arcs) {
@@ -214,11 +222,7 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         const tn = bars[n - 1].t, xn = Xt(tn), yn = Y(f(tn));
         if (xn == null || yn == null || yn < 0 || yn > H) continue;
         g.fillStyle = col; g.beginPath(); g.arc(xn, yn, 4, 0, Math.PI * 2); g.fill();
-        const down = q.kind === 'sup', lx = Math.min(xn + 50, W - 150), ly = yn + (down ? -26 : 26);
-        if (used.some(u => Math.abs(u[1] - ly) < 22 && Math.abs(u[0] - lx) < 220)) continue;
-        used.push([lx, ly]);
-        line(xn, yn, lx, ly, 'rgba(230,194,41,.8)', 1);
-        tag(`${q.tf === '1M' ? 'Aylık' : 'Haftalık'} parabolik ${down ? 'destek' : 'direnç'} ${SV.fmt(f(tn))}${q.broken ? ' · kırıldı' : ''}`, lx, ly, q.broken ? (down ? '#ef5350' : '#26a69a') : '#7a5d00', '#ffffff', 'left');
+        const down = q.kind === 'sup';
         if (q.broken) {
           const dy = down ? 60 : -60;
           line(xn + 6, yn + dy * 0.15, xn + 30, yn + dy, down ? '#ef5350' : '#26a69a', 1.5, [5, 4]);
@@ -235,7 +239,6 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         if (y1 == null || y2 == null || x1 == null) continue;
         g.fillStyle = fill; g.fillRect(x1, y1, W - x1, y2 - y1);
         line(x1, y1, W, y1, col, 1, [4, 3]); line(x1, y2, W, y2, col, 1, [4, 3]);
-        label(c.label || name, Math.min(W - 70, x1 + 60), (y1 + y2) / 2, col);
       }
     }
     if (res && res.patterns && S.layers.pat) {
