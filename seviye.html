@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seviye · Grafik</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="row">
+    <div class="brand"><h1 id="title">BTCUSDT</h1><span class="px num" id="px">—</span><span class="chg num" id="chg"></span></div>
+    <div class="ctl">
+      <div class="seg" id="mkt" role="group" aria-label="Piyasa">
+        <button data-v="spot">Spot</button><button data-v="futures">Vadeli</button>
+      </div>
+      <input type="text" id="sym" list="syms" aria-label="Parite" spellcheck="false" autocomplete="off">
+      <datalist id="syms"><option>BTCUSDT</option><option>ETHUSDT</option><option>SOLUSDT</option><option>BNBUSDT</option><option>XRPUSDT</option><option>DOGEUSDT</option><option>XAUUSDT</option><option>XAGUSDT</option><option>COPPERUSDT</option><option>BZUSDT</option><option>CLUSDT</option></datalist>
+      <div class="seg" id="tf" role="group" aria-label="Zaman dilimi">
+        <button data-v="5m">5d</button><button data-v="15m">15d</button><button data-v="1h">1s</button><button data-v="4h">4s</button><button data-v="1d">1G</button><button data-v="1w">1H</button><button data-v="1M">1A</button>
+      </div>
+      <div class="seg"><button id="autoBtn" title="Otomatik fiyat ölçeği: grafik görünen mumlara göre kendini ölçekler">Auto</button><button id="logBtn" title="Logaritmik fiyat ölçeği">Log</button></div>
+      <span class="live"><span class="dot" id="dot"></span><span id="liveTxt">Bağlanıyor</span></span>
+    </div>
+  </div>
+  <nav class="quick" id="quick" aria-label="Hızlı seçim">
+    <button data-m="spot" data-s="BTCUSDT">BTC</button>
+    <button data-m="spot" data-s="ETHUSDT">ETH</button>
+    <button data-m="spot" data-s="SOLUSDT">SOL</button>
+    <span class="sep"></span>
+    <button data-m="futures" data-s="XAUUSDT">Altın</button>
+    <button data-m="futures" data-s="XAGUSDT">Gümüş</button>
+    <button data-m="futures" data-s="COPPERUSDT">Bakır</button>
+    <button data-m="futures" data-s="BZUSDT">Brent</button>
+    <span class="sep"></span>
+    <button data-d="CRYPTOCAP:BTC.D">BTC.D <span class="num" id="qBtcD"></span></button>
+    <button data-d="CRYPTOCAP:USDT.D">USDT.D <span class="num" id="qUsdtD"></span></button>
+    <span class="sep"></span>
+    <button id="openGuide" class="gbtn">Formasyon rehberi</button>
+  </nav>
+</header>
+<main>
+  <div class="leftcol">
+  <div class="chartwrap" id="chartView">
+    <div class="tools" id="tools" role="toolbar" aria-label="Çizim araçları">
+      <button data-t="cursor" title="İmleç (Esc)"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z"/></svg></button>
+      <button data-t="trend" title="Trend çizgisi (Alt+T)"><svg viewBox="0 0 24 24"><path d="M4 19L20 5"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="5" r="2"/></svg></button>
+      <button data-t="hline" title="Yatay çizgi (Alt+H)"><svg viewBox="0 0 24 24"><path d="M3 12h18"/><circle cx="12" cy="12" r="2"/></svg></button>
+      <button data-t="fib" title="Fibonacci düzeltme (Alt+F)"><svg viewBox="0 0 24 24"><path d="M4 5h16M4 9.5h16M4 14h16M4 19h16"/></svg></button>
+      <button data-t="long" title="Long pozisyon (Alt+L)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="8" class="g"/><rect x="4" y="12" width="16" height="7" class="r"/></svg></button>
+      <button data-t="short" title="Short pozisyon (Alt+S)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="7" class="r"/><rect x="4" y="11" width="16" height="9" class="g"/></svg></button>
+      <span class="sep"></span>
+      <button id="delSel" title="Seçili çizimi sil (Delete)" disabled><svg viewBox="0 0 24 24"><path d="M6 7h12M9 7V4h6v3M8 7l1 13h6l1-13"/></svg></button>
+      <button id="clearAll" title="Tüm çizimleri sil"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </div>
+    <div class="stage" id="stage">
+      <div id="chart"></div>
+      <canvas id="ov"></canvas>
+      <div class="tl"><div id="layersBox" class="layersbox"></div><div id="legend"></div></div>
+      <div id="hint"></div>
+      <div id="msg"><div><h2 id="msgH">Yükleniyor</h2><p class="note" id="msgP"></p></div></div>
+    </div>
+  </div>
+  <div class="domview" id="domView" hidden>
+    <div class="domhead">
+      <div class="seg" id="domSeg" role="group" aria-label="Dominans">
+        <button data-d="CRYPTOCAP:BTC.D">BTC.D</button><button data-d="CRYPTOCAP:USDT.D">USDT.D</button>
+      </div>
+      <p class="note">Dominans grafiği TradingView'in ücretsiz gömülü grafiğidir; Buy/Sell sinyalleri burada çalışmaz, çizim araçları grafiğin solunda.</p>
+      <button class="link" id="domBack">← Grafiğe dön</button>
+    </div>
+    <div class="tvbox" id="tvBox"></div>
+  </div>
+  <section class="trades" id="trades">
+    <div class="thead">
+      <button class="chip tg" id="tradesToggle" aria-label="İşlemler panelini aç/kapat">▾</button>
+      <h2>İşlemler</h2>
+      <span id="tradesTotal" class="tot"></span>
+      <span class="sp"></span>
+      <button class="chip" id="tradeAddBtn">İşlem ekle</button>
+      <button class="chip" id="hlBtn">Hyperliquid</button>
+    </div>
+    <form class="tform" id="tradeForm" hidden>
+      <label>Sembol<input type="text" id="tfSym" spellcheck="false" autocomplete="off"></label>
+      <label>Piyasa<select id="tfMkt"><option value="futures">Vadeli</option><option value="spot">Spot</option></select></label>
+      <div class="lbl">Yön<div class="seg" id="tfSideSeg"><button type="button" data-v="long" aria-pressed="true">Long</button><button type="button" data-v="short" aria-pressed="false">Short</button></div><input type="hidden" id="tfSide" value="long"></div>
+      <label>Giriş fiyatı<input type="number" id="tfEntry" step="any" min="0" inputmode="decimal"></label>
+      <label>Miktar<span class="row"><input type="number" id="tfQty" step="any" min="0" inputmode="decimal"><select id="tfUnit"><option value="usd">USD</option><option value="qty">adet</option></select></span></label>
+      <label>Kaldıraç<input type="number" id="tfLev" step="any" min="1" value="1" inputmode="decimal"></label>
+      <label>Komisyon % (tek yön)<input type="number" id="tfFee" step="any" min="0" value="0.045" inputmode="decimal"></label>
+      <div class="acts"><button class="btn sm" type="submit">Kaydet</button><button class="link" type="button" id="tfCancel">Vazgeç</button></div>
+      <p class="note down" id="tfErr"></p>
+    </form>
+    <form class="tform" id="hlForm" hidden>
+      <label class="wide">Hyperliquid cüzdan adresi<input type="text" id="hlAddr" spellcheck="false" autocomplete="off" placeholder="0x…"></label>
+      <div class="acts"><button class="btn sm" type="submit">Bağla</button><button class="link" type="button" id="hlCancel">Vazgeç</button></div>
+      <p class="note">Sadece herkese açık adres gerekir; özel anahtar ya da API anahtarı istenmez, işlem açılamaz. Adresi boş bırakıp Bağla'ya basarsan bağlantı kesilir.</p>
+      <p class="note down" id="hlErr"></p>
+    </form>
+    <p id="hlStatus" class="note"></p>
+    <div class="tscroll">
+      <table class="ttable">
+        <thead><tr><th>Sembol</th><th>Yön</th><th>Miktar</th><th>Giriş</th><th>Fiyat</th><th>Açık K/Z</th><th>Gerçekleşen</th><th>Toplam net</th><th>Başabaş</th><th>Likidasyon</th><th></th></tr></thead>
+        <tbody id="tradesBody"></tbody>
+      </table>
+    </div>
+  </section>
+  </div>
+  <aside>
+    <section>
+      <h2 class="h2row">İşlem fikri <button class="chip" id="notifyBtn"></button></h2>
+      <div id="idea"><p class="empty">Hesaplanıyor…</p></div>
+    </section>
+    <section>
+      <h2>Durum</h2>
+      <div class="state" id="state"></div>
+    </section>
+    <section>
+      <h2>Formasyonlar <span class="note">(grafikte sadece aktif olanlar; diğerlerini görmek için tıkla)</span></h2>
+      <ul class="ev" id="pats"></ul>
+    </section>
+    <section>
+      <h2>Son sinyaller <span class="note">(tıkla, grafikte git)</span></h2>
+      <ul class="ev" id="sigs"></ul>
+    </section>
+    <section>
+      <h2>Destek ve direnç</h2>
+      <table><thead><tr><th>Tür</th><th>Fiyat</th><th>Temas</th><th>Uzaklık</th></tr></thead><tbody id="lvl"></tbody></table>
+    </section>
+    <section>
+      <h2>Pozisyon hesabı</h2>
+      <div class="pair">
+        <label>Hesap (USDT)<input type="number" id="account" min="1" step="any" inputmode="decimal"></label>
+        <label>İşlem başı risk %<input type="number" id="riskPct" min="0.1" max="100" step="0.1" inputmode="decimal"></label>
+      </div>
+      <ul class="pos" id="pos"></ul>
+    </section>
+    <section>
+      <h2>Çizimler <span class="note">(göz ikonuyla gizle/göster)</span></h2>
+      <ul class="draws" id="draws"></ul>
+    </section>
+    <section>
+      <h2>Sinyal başarısı <span class="note">(bu grafikteki geçmiş)</span></h2>
+      <table><thead><tr><th>Sinyal</th><th>Adet</th><th>Başarı</th><th>Ort.</th><th>Rastgeleye göre</th></tr></thead><tbody id="stats"></tbody></table>
+      <p class="note" style="margin-top:8px">Satırın üstüne gelince ölçüm kuralı görünür. "R" risk birimidir: hedef +1,5R, stop −1R. Son sütun, aynı kuralla her mumda rastgele işlem açılsaydı elde edilecek sonuca göre farktır; pozitifse sinyal işe yarıyor demektir.</p>
+    </section>
+    <section>
+      <details>
+        <summary>Ayarlar</summary>
+        <div class="set">
+          <label class="sel">Geçmiş veri <select id="depth"><option value="1000">1.000 mum</option><option value="3000">3.000 mum</option><option value="5000">5.000 mum</option></select></label>
+          <label>Pivot genişliği <span class="num" id="o_pivot"></span><input type="range" id="pivot" min="2" max="15" step="1"></label>
+          <label>Seviye sayısı <span class="num" id="o_levels"></span><input type="range" id="levels" min="2" max="16" step="1"></label>
+          <label>Birleştirme toleransı (ATR ×) <span class="num" id="o_tol"></span><input type="range" id="tol" min="0.2" max="2" step="0.1"></label>
+        </div>
+      </details>
+    </section>
+    <section>
+      <details>
+        <summary>Sinyaller ne anlama geliyor?</summary>
+        <dl class="defs">
+          <dt><i class="sw buy"></i>Buy</dt><dd>Fiyat iğneyle son dibin altını süpürüp kapanışta geri alır (yüksek hacimle). Ardından 3 mum içinde süpürme mumunun tepesinin üstünde yeşil kapanış gelirse Buy verilir. Etiket bu onay mumundadır.</dd>
+          <dt><i class="sw buy"></i>Sell</dt><dd>Sadece fiyat SMA200 altındayken (düşüş rejimi): ya tepe süpürmesi ya da aşırı alım + direnç + Bollinger üst bandı gibi en az 4 koşul, ardından aşağı onay mumu.</dd>
+          <dt><i class="sw ltb"></i>Mor P</dt><dd>Uzun vadeli sert düşüş uyarısı: fiyat ve SMA50, SMA200 altındayken SMA200'ün aşağı dönmesi. Sadece 4 saatlik ve üstü grafiklerde gösterilir; bir düşüş döneminde genelde bir kez çıkar.</dd>
+          <dt><i class="sw big bear"></i>Mor çizgi</dt><dd>Büyük düşüş riski: daralmış Bollinger bantlarından aşağı kırılım ya da SMA200 altında yüksek hacimli büyük kırmızı mum.</dd>
+          <dt><i class="sw big"></i>Yeşil çizgi</dt><dd>Büyük yükseliş ihtimali: daralmış bantlardan yukarı kırılım ya da SMA200 üstünde yüksek hacimli büyük yeşil mum.</dd>
+          <dt><i class="sw react"></i>Tepki</dt><dd>Aday işaret: iğneyle dip/tepe süpürüldü, onay bekleniyor. Onay gelirse Buy/Sell olur. Tek başına güvenilir değildir.</dd>
+          <dt><i class="sw rev"></i>Sarı çizgi</dt><dd>Yön değişebilir: RSI uyumsuzluğu ya da SMA50/SMA200 kesişimi.</dd>
+          <dt><i class="sw tr"></i>Trend çizgileri</dt><dd>Aylık, haftalık ve günlük mumlardaki tepe/diplerden çizilir. Sadece kırılmamış ve fiyata yakın olanlar görünür.</dd>
+          <dt><i class="sw pat"></i>Formasyonlar</dt><dd>Grafikte yalnızca şu an oluşan ya da son 30 mumda kırılanlar görünür. Kesikli çizgi boyun çizgisi, "Hedef" ölçülen hareket hedefidir.</dd>
+          <dt><i class="sw para"></i>Parabolik yay</dt><dd>Uzun vadeli kavisli destek ya da direnç. Etikette bugünkü değeri yazar; kırılırsa ok çıkar.</dd>
+        </dl>
+        <p class="note">Bu kurallar 5 parite (BTC, ETH, SOL, BNB, XRP) ve 3 zaman diliminde (1s, 4s, 1G) gerçek Binance verisiyle test edilerek seçildi. Parametreler BTC/ETH/SOL'de seçildi, BNB/XRP'de doğrulandı. Sinyaller sadece o ana kadarki veriyle hesaplanır; onay mumu kapanınca çıkar ve sonradan değişmez.</p>
+        
+      </details>
+    </section>
+    <section>
+      <p class="note" id="storeInfo"></p>
+      <p class="note">Veri: Binance herkese açık API (anahtar gerekmez). Altın, gümüş, bakır ve Brent Binance vadeli TradFi kontratlarıdır. Dominans değerleri CoinGecko'dan. Yatırım tavsiyesi değildir.</p>
+      <p class="note">Grafik kütüphanesi: TradingView Lightweight Charts™, Copyright (c) 2025 TradingView, Inc. <a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a></p>
+    </section>
+  </aside>
+</main>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<dialog id="guide" aria-labelledby="guideTitle">
+  <div class="ghead">
+    <div>
+      <h2 id="guideTitle">Formasyon rehberi</h2>
+      <p class="note">En yaygın kullanılandan en az kullanılana doğru sıralı (traderlar arasındaki yaygınlığa göre yaklaşık bir sıralama). Hedefler "ölçülen hareket" kuralıdır, garanti değildir.</p>
+    </div>
+    <button id="closeGuide" class="link">Kapat ✕</button>
+  </div>
+  <div class="ggrid" id="guideGrid"></div>
+</dialog>
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<script src="store.js"></script>
+<script src="indicators.js"></script>
+<script src="patterns.js"></script>
+<script src="analysis.js"></script>
+<script src="zones.js"></script>
+<script src="guide.js"></script>
+<script src="drawings.js"></script>
+<script src="trades.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
