@@ -146,7 +146,7 @@ Kullanıcının isteği: Hyperliquid'de açtığı işlemi grafikte görmek, kâ
 
 **Boyut:** Panelin üst kenarı sürüklenerek büyütülür/küçültülür (klavyede ok tuşları, çift tıklama varsayılana döner). Grafiğe en az 340 piksel bırakılır. 900 pikselden dar ekranlarda devre dışı.
 
-**Katmanlar kutusu:** Grafik alanının yüksekliğine sığar (zaman ekseninin üstünde biter), sığmazsa kendi içinde kaydırılır; başlığı yapışkandır.
+**Katmanlar kutusu:** Başlıktaki göz düğmesi tüm katmanları gizler; tekrar basınca önceki açık/kapalı durumları (`layersPrev`) geri gelir. Grafik alanının yüksekliğine sığar (zaman ekseninin üstünde biter), sığmazsa kendi içinde kaydırılır; başlığı yapışkandır.
 
 **Sekmeler:** Pozisyonlar, Geçmiş, Analiz. Geçmiş ve Analiz aynı dönem (7G/30G/90G/1Y/Tümü) ve sembol filtresini kullanır.
 
@@ -288,29 +288,32 @@ Kullanıcının isteği: uzun vadeli trend çizgileri, parabolik yaylar ve hafta
 
 Sağ panelin en üstünde. Kullanıcının istekleri: senaryolar backtest ile desteklenmeli, grafik ilerledikçe güncellenmeli, iyi giriş oluşunca bildirim gelmeli; piyasa yönü (ayı/boğa) belirlenmeli; başarı 1.000 $'lık girişte +50 $ (başarılı), +100 $ (çok başarılı), +200 $ (süper başarılı) olarak ölçülmeli, haftalık işlemlerde +50–100 $ yeterli.
 
-- **Piyasa yönü:** BTC aylık kapanışı (spot BTCUSDT 1M, 6 saatte bir) son 10 aylık kapanış ortalamasının üstündeyse boğa, altındaysa ayı. Sadece ay kapanışında değişir. Ay içinde güncel fiyat ortalamanın öbür tarafındaysa "ay böyle kapanırsa yön döner" uyarısı çıkar.
-  - Test (`/home/claude/bt/regime*.js`, 5 coin günlük 2018–2026): kendi grafiğine göre yön (SMA200, SMA50/200, haftalık 20/50, aylık 10, oylama) 2023 sonrası işe yaramadı. BTC aylık 10 kuralı iki dönemde de tuttu: 90 günde yön tarafında %20 hareketin ters taraftan önce gelme oranı %69 / %57 (2018–22 / 2023–26), ters taraf %57 / %43. 7–30 günde fark yok.
+- **Piyasa yönü:** BTC aylık (spot BTCUSDT 1M, 6 saatte bir). Kapanış 10 aylık ortalamanın üstünde ve ortalama 2 ay öncesine göre yükselmişse boğa; altında ve düşmüşse ayı; ikisi çelişirse önceki yön korunur. Sadece ay kapanışında değişir. Ay içinde güncel fiyatla yön dönecekse uyarı çıkar.
+  - Kullanıcı itirazı (2026-11): "ayı piyasasındayız ama boğa görünüyor". BTC 2025-10-06'da 126.200 zirve, 2026-11'de 61.362 (−%51). Sadece ortalamaya bakan eski kural 2026 Ağustos–Ekim tepkisini boğa saydı. Eğim şartı eklenince 2025-12'den beri kesintisiz ayı.
+  - Test (`/home/claude/bt/regime_v2.js`, 5 coin günlük, 90 gün ±%20 simetrik): yön tarafı / ters taraf %60 / %39 (2018–22), %48 / %40 (2023–26). 8 yılda 3 yön değişimi (eski kural 9). Kendi grafiğine göre yön (SMA200, 50/200, haftalık 20/50) 2023 sonrası işe yaramadı.
 - **Bölgeler:** Sadece aylık ve haftalık grafikten (`SV.zones.build`). Fiyatın ±%25'i içinde %1,2 aralıkla kümelenir. Grafik seviyeleri senaryoya katılmaz.
 - **Tetik:** Short: mum bölgenin alt kenarına 0,25 ATR yaklaşır ya da içine girer ve bölgenin altında kapatır; giriş o mumun kapanışı. Long tersi. Aynı yönde 6 mumdan sık sayılmaz. **Kapanış bölge kenarından 1 ATR'dan ya da %4'ten uzaksa "giriş için geç"** (kullanıcının haftalık grafikte 76.303'teki bölgeden %14 aşağıda 65.351 girişi görmesi üzerine eklendi; backtest'te bu girişler +50 $ %46, ortalama negatif).
 - **Plan (kullanıcının kademeleri):** stop girişin %5 ötesi (−50 $). +%5'te 1/3 kapatılır ve stop girişe çekilir, +%10'da 1/3, +%20'de kalan. 30 gün ufuk. Henüz tetiklenmemiş planda giriş bölge kenarından 0,4 ATR içeride tahmin edilir.
 - **Güçlü kurulum** = bölgede en az 2 kaynak + en az biri trend/parabolik + fiyat SMA200'ün lehte tarafında. Dördüncü satır piyasa yönü. **İyi kurulum** (bildirim) = güçlü + piyasa yönünde + backtest +50 $ oranı ≥ %60 + en az 60 örnek + test edilmiş zaman dilimi (1s/4s/1G).
-- **Backtest sonuçları** (30 gün, yukarıdaki plan, 1s/4s/1G, 5 coin; `regime8.js`, coin bölmesi `regime10.js`). Rastgele girişte ±%5'te önce hedef ≈ %50:
+- **Backtest sonuçları** (30 gün, yukarıdaki plan, 1s/4s/1G, 5 coin, yeni piyasa yönü kuralıyla; `regime8b.js`, coin bölmesi `regime10b.js`). Rastgele girişte ±%5'te önce hedef ≈ %50:
   | Grup | n | +50 $ | +100 $ | +200 $ | ort. $/işlem | 7 gün +50 $ |
   |---|---|---|---|---|---|---|
-  | Short güçlü · piyasa yönünde | 118 | %61 | %35 | %25 | +19 | %59 |
-  | Short güçlü · ters | 29 | %69 | %28 | %21 | +20 | %69 |
-  | Short zayıf · yönünde | 878 | %49 | %30 | %15 | +5 | %42 |
-  | Short zayıf · ters | 1038 | %56 | %32 | %17 | +11 | %49 |
-  | Long güçlü · yönünde | 68 | %68 | %40 | %12 | +22 | %53 |
-  | Long güçlü · ters | 38 | %76 | %58 | %26 | +56 | %29 |
-  | Long zayıf · yönünde | 1116 | %47 | %24 | %13 | −1 | %41 |
-  | Long zayıf · ters | 925 | %44 | %20 | %6 | −7 | %34 |
-  - Coin bölmesi tutarsız: short güçlü yönünde BTC/ETH/BNB %53, SOL/XRP %78; long güçlü yönünde %74 / %52. Veri çoğunlukla 2023–26.
-  - Eski 1R (TP1) ölçümü: güçlü short piyasa yönünde 115 işlemde %67 (rastgele %50), ters 33 işlemde %52.
-- **Durumlar:** Bekleniyor, Yaklaşıyor (≤ 1,5 ATR ya da ≤ %1,2), Bölgede, Giriş oluştu (son 3 kapanmış mumda; görülen kademe yazar), Bölge kırıldı; son kurulum için not (kademe/başabaş/stop/geç kalındı). 1s/4s/1G dışındaki zaman dilimlerinde "test edilmedi" uyarısı.
+  | Short güçlü · piyasa yönünde | 120 | %63 | %37 | %26 | +21 | %61 |
+  | Short güçlü · ters | 27 | %63 | %19 | %15 | +9 | %63 |
+  | Short zayıf · yönünde | 1076 | %56 | %35 | %21 | +16 | %47 |
+  | Short zayıf · ters | 840 | %48 | %25 | %11 | −1 | %44 |
+  | Long güçlü · yönünde | 59 | %66 | %42 | %14 | +23 | %49 |
+  | Long güçlü · ters | 47 | %77 | %51 | %21 | +47 | %38 |
+  | Long zayıf · yönünde | 873 | %54 | %29 | %17 | +8 | %46 |
+  | Long zayıf · ters | 1168 | %40 | %17 | %5 | −12 | %32 |
+  - Zayıf kurulumlarda piyasa yönü belirgin fark yaratıyor (short %56 / %48, long %54 / %40). Güçlülerde örnek az ve coin bölmesi tutarsız: short güçlü yönünde BTC/ETH/BNB %54, SOL/XRP %82; long güçlü yönünde %74 / %38. Veri çoğunlukla 2023–26.
+  - "İyi kurulum" şu an sadece short (güçlü + yönünde, n 120); long güçlü yönünde 59 örnekle 60 eşiğinin altında.
+- **Durumlar:** Bekleniyor, Yaklaşıyor (≤ %1,2 ya da ≤ 1,5 ATR ve ≤ %5), Bölgede, Giriş oluştu (son 3 kapanmış mumda; görülen kademe yazar), Bölge kırıldı; son kurulum için not (kademe/başabaş/stop/geç kalındı). 1s/4s/1G dışındaki zaman dilimlerinde "test edilmedi" uyarısı.
+- Bekleyen senaryonun bölgeleri güncel fiyata göre seçilir (aylık grafikte açık ay %20 hareket edebildiği için). Tetik kontrolü backtest'teki gibi önceki kapanışa göredir. Senaryo en az 30 kapanmış mumla çalışır; SMA200 yoksa o koşul ✗ ve açıklamalı (aylık grafik).
 - Panel bu grafiğin geçmişindeki aynı kuralın sonucunu da gösterir (`SV.scen.history`, aynı plan). 15 saniyede bir yeniden çizilir.
 - "Bu grafikte kısa vade" satırı (eğilim puanı): ana trend ±1, kısa vade ±0,5, son 150 mumda P −1, son 20 mumda mor −1 / yeşil +1, son 10 mumda Sell/Direnç −1, Buy +1.
-- "Bu planı grafiğe çiz" stop ve +100 $ hedefiyle long/short çizimi oluşturur. Grafikteki bölge bantlarında güçlüyse "· güçlü" yazar.
+- **Kart düzeni (kullanıcı: "gereksiz yazıları kaldır"):** başlık + etiket (İyi kurulum / Güçlü · az örnek / Güçlü · piyasaya ters / Zayıf), durum satırı, bölge satırı, kısa koşul etiketleri (2+ kaynak, Trend/parabolik, SMA200, Piyasa yönünde), Kademe | Fiyat | Olasılık tablosu, tek satır özet (30 günde ort. $/işlem · örnek sayısı · uyarılar). Kural ve backtest ayrıntısı kapalı "Nasıl hesaplandı?" bölümünde; açık bırakılan bölüm 15 saniyelik yenilemede açık kalır. Piyasa kutusu da kısa; ayrıntı "Nasıl belirleniyor?" içinde. "En yakın direnç/destek" listesi kaldırıldı (bölge kartta).
+- "Grafiğe çiz" stop ve +100 $ hedefiyle long/short çizimi oluşturur. Grafikteki bölge bantlarında güçlüyse "· güçlü" yazar.
 
 ### Favori taraması (`scan.js`)
 

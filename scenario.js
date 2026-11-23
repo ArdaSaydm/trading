@@ -3,16 +3,18 @@ window.SV = window.SV || {};
 SV.scen = (() => {
   const STATS = {
     short: {
-      strong: { with: { n: 118, p50: 0.61, p100: 0.35, p200: 0.25, usd: 19, w7: 0.59, usd7: 23, tr: 0.53, te: 0.78 }, against: { n: 29, p50: 0.69, p100: 0.28, p200: 0.21, usd: 20, w7: 0.69, usd7: 15, tr: 0.56, te: 0.85 } },
-      base: { with: { n: 878, p50: 0.49, p100: 0.3, p200: 0.15, usd: 5, w7: 0.42, usd7: 5 }, against: { n: 1038, p50: 0.56, p100: 0.32, p200: 0.17, usd: 11, w7: 0.49, usd7: 7 } }
+      strong: { with: { n: 120, p50: 0.63, p100: 0.37, p200: 0.26, usd: 21, w7: 0.61, usd7: 25, tr: 0.54, te: 0.82 }, against: { n: 27, p50: 0.63, p100: 0.19, p200: 0.15, usd: 9, w7: 0.63, usd7: 5, tr: 0.53, te: 0.75 } },
+      base: { with: { n: 1076, p50: 0.56, p100: 0.35, p200: 0.21, usd: 16, w7: 0.47, usd7: 10 }, against: { n: 840, p50: 0.48, p100: 0.25, p200: 0.11, usd: -1, w7: 0.44, usd7: 0 } }
     },
     long: {
-      strong: { with: { n: 68, p50: 0.68, p100: 0.4, p200: 0.12, usd: 22, w7: 0.53, usd7: 18, tr: 0.74, te: 0.52 }, against: { n: 38, p50: 0.76, p100: 0.58, p200: 0.26, usd: 56, w7: 0.29, usd7: 19, tr: 0.78, te: 0.67 } },
-      base: { with: { n: 1116, p50: 0.47, p100: 0.24, p200: 0.13, usd: -1, w7: 0.41, usd7: -2 }, against: { n: 925, p50: 0.44, p100: 0.2, p200: 0.06, usd: -7, w7: 0.34, usd7: -10 } }
+      strong: { with: { n: 59, p50: 0.66, p100: 0.42, p200: 0.14, usd: 23, w7: 0.49, usd7: 17, tr: 0.74, te: 0.38 }, against: { n: 47, p50: 0.77, p100: 0.51, p200: 0.21, usd: 47, w7: 0.38, usd7: 20, tr: 0.79, te: 0.71 } },
+      base: { with: { n: 873, p50: 0.54, p100: 0.29, p200: 0.17, usd: 8, w7: 0.46, usd7: 4 }, against: { n: 1168, p50: 0.4, p100: 0.17, p200: 0.05, usd: -12, w7: 0.32, usd7: -13 } }
     },
     rand50: 0.5,
-    market: { early: { with: 0.69, against: 0.57, ret: 37 }, late: { with: 0.57, against: 0.43, ret: 15 } }
+    market: { early: { with: 0.6, against: 0.39 }, late: { with: 0.48, against: 0.4 }, flips: 3, old: 9 }
   };
+  const MIN_WIN = 0.6;
+  const cache = new Map();
   const LV = [0.05, 0.1, 0.2], STOP = 0.05;
   const STEPS = { '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400, '1w': 604800, '1M': 2629800 };
   let btcM = null;
@@ -25,27 +27,21 @@ SV.scen = (() => {
     let k = M.length - 1;
     while (k >= 0 && M[k].t > t) k--;
     const c = k - 1;
-    if (c < 9) return null;
-    let sm = 0;
-    for (let j = c - 9; j <= c; j++) sm += M[j].c;
-    sm /= 10;
-    const dir = M[c].c > sm ? 1 : -1;
-    let since = 0;
-    for (let j = c; j >= 9; j--) {
-      let s2 = 0; for (let q = j - 9; q <= j; q++) s2 += M[q].c;
-      if ((M[j].c > s2 / 10 ? 1 : -1) !== dir) break;
-      since++;
+    if (c < 12) return null;
+    const avg = (j, last) => { let s = last != null ? last : M[j].c; for (let q = j - 9; q < j; q++) s += M[q].c; return s / 10; };
+    let dir = 0, since = 0;
+    for (let j = 11; j <= c; j++) {
+      const s = avg(j), s2 = avg(j - 2), a = M[j].c > s ? 1 : -1, b = s > s2 ? 1 : -1, nd = a === b ? a : dir || a;
+      since = nd === dir ? since + 1 : 1; dir = nd;
     }
-    const out = { dir, close: M[c].c, sma: sm, dist: (M[c].c - sm) / sm, since, month: M[c].t };
+    const sm = avg(c), sm2 = avg(c - 2);
+    const out = { dir, close: M[c].c, sma: sm, dist: (M[c].c - sm) / sm, slope: (sm - sm2) / sm2, side: M[c].c > sm ? 1 : -1, since, month: M[c].t };
     if (k > c) {
-      let ns = M[k].c; for (let j = c - 8; j <= c; j++) ns += M[j].c; ns /= 10;
-      out.next = { dir: M[k].c > ns ? 1 : -1, price: M[k].c, sma: ns };
+      const ns = avg(k, M[k].c), ns2 = avg(k - 2), a = M[k].c > ns ? 1 : -1, b = ns > ns2 ? 1 : -1;
+      out.next = { dir: a === b ? a : dir, price: M[k].c, sma: ns, side: a };
     }
     return out;
   }
-
-  const MIN_WIN = 0.6;
-  const cache = new Map();
 
   function zonesAt(htf, t, price, id) {
     const out = [];
@@ -79,7 +75,7 @@ SV.scen = (() => {
     const list = [
       { ok: zone.names.length >= 2, text: 'Bölgede en az 2 üst zaman dilimi kaynağı' },
       { ok: zone.trends >= 1, text: 'Bölgede trend çizgisi ya da parabolik yay' },
-      { ok: below, text: dir < 0 ? 'Fiyat SMA200 altında' : 'Fiyat SMA200 üstünde' }
+      { ok: below, text: (dir < 0 ? 'Fiyat SMA200 altında' : 'Fiyat SMA200 üstünde') + (s200 == null ? ' (bu grafikte SMA200 için yeterli mum yok)' : '') }
     ];
     const strong = list.every(c => c.ok), rg = regime(t), aligned = !!rg && rg.dir === dir;
     list.push({ ok: aligned, market: true, text: rg ? `Piyasa yönüyle aynı (BTC aylık: ${rg.dir > 0 ? 'boğa' : 'ayı'})` : 'Piyasa yönü bilinmiyor (BTC aylık veri yok)' });
@@ -141,14 +137,14 @@ SV.scen = (() => {
   const TESTED = ['1h', '4h', '1d'];
   function live(bars, ctx, htf, closedN, id, interval) {
     const n = bars.length, cur = bars[n - 1], c = closedN - 1;
-    if (c < 210 || !ctx.atr[c]) return null;
+    if (c < 30 || !ctx.atr[c]) return null;
     const a = ctx.atr[c], price = cur.c;
     const out = { atr: a, price };
-    const zsNow = zonesAt(htf, cur.t, cur.o, id), pcNow = closedN === n ? cur.c : bars[n - 2].c;
+    const zsNow = zonesAt(htf, cur.t, cur.o, id), pcNow = cur.c;
     const now = pick(zsNow, cur.t, pcNow, a);
     out.R1 = now.R1; out.S1 = now.S1;
     const trig = { 1: null, '-1': null };
-    for (let j = c; j >= Math.max(211, c - 2); j--) for (const ev of eventAt(bars, ctx, htf, j, id)) if (!trig[ev.dir]) trig[ev.dir] = ev;
+    for (let j = c; j >= Math.max(31, c - 2); j--) for (const ev of eventAt(bars, ctx, htf, j, id)) if (!trig[ev.dir]) trig[ev.dir] = ev;
     for (const dir of [-1, 1]) {
       const key = dir < 0 ? 'short' : 'long', ev = trig[dir];
       if (ev && ev.late) out[key] = { ...ev, state: 'late', ago: c - ev.i };
@@ -162,7 +158,7 @@ SV.scen = (() => {
       const edge = dir < 0 ? zone.lo : zone.hi, distA = (dir < 0 ? edge - price : price - edge) / a, distP = Math.abs(edge - price) / price;
       const inZone = dir < 0 ? price >= zone.lo - 0.25 * a : price <= zone.hi + 0.25 * a;
       const broke = dir < 0 ? price > zone.hi : price < zone.lo;
-      const state = broke ? 'broken' : inZone ? 'inzone' : distA <= 1.5 || distP <= 0.012 ? 'near' : 'wait';
+      const state = broke ? 'broken' : inZone ? 'inzone' : distP <= 0.012 || (distA <= 1.5 && distP <= 0.05) ? 'near' : 'wait';
       const ck = checks(dir, zone, price, ctx.s200[c], cur.t);
       const p = plan(dir, edge + dir * 0.4 * a);
       const prev = out[key];

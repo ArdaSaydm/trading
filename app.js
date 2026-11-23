@@ -359,37 +359,46 @@ function scenStateTxt(sc, key) {
   return ['wait', `Bekleniyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
 }
 function scenCard(sc, key) {
-  const sh = key === 'short', title = sh ? 'Short senaryosu' : 'Long senaryosu';
+  const sh = key === 'short', title = sh ? 'Short' : 'Long';
   if (!sc || !sc.plan) return `<div class="plan ${key}"><h3>${title}</h3><p class="note">Yakında (±%25) üst zaman dilimi ${sh ? 'direnci' : 'desteği'} yok.</p></div>`;
   const p = sc.plan, st = sc.stats, [stc, stt] = scenStateTxt(sc, key), good = SV.scen.good(sc);
-  const pc = x => SV.pct((x - p.entry) / p.entry * 100);
   const h = scenHist && scenHist[key] && scenHist[key][sc.strong ? 'strong' : 'base'];
-  const here = h && h.n ? `Bu grafiğin geçmişinde aynı tür (${sc.strong ? 'güçlü' : 'zayıf'}) ${h.n} işlem: $50+ ${pctTxt((h.n - h.t[0]) / h.n)}, ortalama ${usdTxt(h.usd / h.n)}.` : '';
-  const tier = good ? `<span class="tier ok">İyi kurulum · $50+ ${pctTxt(st.p50)}</span>` : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? 'az örnek' : 'piyasaya ters'}</span>` : `<span class="tier">Zayıf · $50+ ${pctTxt(st.p50)}</span>`;
-  const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu (${sc.done.ago} mum önce) bölgeden ${SV.pct(sc.done.gap * 100).replace('+', '')} uzakta, ${SV.fmt(sc.done.plan.entry)} fiyatında kapattı. Giriş için geç sayılır: backtest'te bölgeden 1 ATR'dan ya da %4'ten uzak kapanan mumlardan girişler zayıf çıktı.</p>` : sc.done ? `<p class="note">Son kurulum ${sc.done.state === 'full' ? '$200 kademesine ulaştı' : sc.done.state === 'be' ? `${['', '$50', '$100', '$200'][sc.done.tier]} kademesini görüp başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce, giriş ${SV.fmt(sc.done.plan.entry)}).</p>` : '';
-  const grp = `${sc.strong ? 'güçlü' : 'zayıf'} · piyasa ${sc.aligned ? 'yönünde' : 'yönüne ters'}`;
+  const tier = good ? '<span class="tier ok">İyi kurulum</span>' : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? 'az örnek' : 'piyasaya ters'}</span>` : '<span class="tier">Zayıf</span>';
+  const tierName = ['', '+50 $', '+100 $', '+200 $'];
+  const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu bölgeden çok uzakta kapattı; giriş için geç.</p>`
+    : sc.done ? `<p class="note">Son kurulum: ${sc.done.state === 'full' ? '+200 $ oldu' : sc.done.state === 'be' ? `${tierName[sc.done.tier]} görüldü, kalanı başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce).</p>` : '';
+  const ck = { 0: '2+ kaynak', 1: 'Trend/parabolik', 2: sh ? 'SMA200 altı' : 'SMA200 üstü' };
+  const checks = sc.checks.map((c, k) => `<li class="${c.ok ? 'ok' : 'no'}" title="${c.text}">${c.ok ? '✓' : '✗'} ${c.market ? 'Piyasa yönünde' : ck[k]}</li>`).join('');
+  const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
   const split = st.tr != null ? ` Coin bölmesi: BTC/ETH/BNB ${pctTxt(st.tr)}, SOL/XRP ${pctTxt(st.te)}.` : '';
+  const here = h && h.n ? ` Bu grafiğin geçmişinde aynı tür ${h.n} işlem: +50 $ ${pctTxt((h.n - h.t[0]) / h.n)}, ortalama ${usdTxt(h.usd / h.n)}.` : '';
   return `<div class="plan ${key}${sc.state === 'triggered' && good ? ' good' : ''}">
     <h3>${title} ${tier}</h3>
-    <p class="st ${stc}">${stt}</p>${doneTxt}${sc.tested ? '' : `<p class="note down">Bu kural sadece 1s, 4s ve 1G grafiklerde test edildi; ${TFN[S.interval]} grafikte oranlar geçerli değil ve "iyi giriş" bildirimi gönderilmez.</p>`}
-    <p>${sh ? 'Fiyat dirence gelip iğne bırakır ve bölgenin altında kapatırsa o mumun kapanışından short.' : 'Fiyat desteğe inip iğne bırakır ve bölgenin üstünde kapatırsa o mumun kapanışından long.'} Stop girişin %5 ötesi (1.000 $'da −50 $). +%5'te üçte biri kapatılır ve stop girişe çekilir, +%10'da üçte biri, +%20'de kalanı.</p>
-    <p class="zn">Bölge: <span class="num">${SV.fmt(sc.zone.lo)}${sc.zone.hi > sc.zone.lo ? ' – ' + SV.fmt(sc.zone.hi) : ''}</span> · ${sc.zone.names.join(' + ')}</p>
-    <ul class="ck">${sc.checks.map(c => `<li class="${c.ok ? 'ok' : 'no'}${c.market ? ' mk' : ''}">${c.ok ? '✓' : '✗'} ${c.text}</li>`).join('')}</ul>
-    <dl><dt>Giriş${sc.state === 'triggered' ? '' : ' (tahmini)'}</dt><dd class="num">${SV.fmt(p.entry)}</dd>
-      <dt>Stop · −50 $</dt><dd class="num">${SV.fmt(p.stop)} <small>${pc(p.stop)}</small></dd>
-      <dt>Başarılı · +50 $</dt><dd class="num">${SV.fmt(p.lv[0])} <small>${pc(p.lv[0])} · ${pctTxt(st.p50)}</small></dd>
-      <dt>Çok başarılı · +100 $</dt><dd class="num">${SV.fmt(p.lv[1])} <small>${pc(p.lv[1])} · ${pctTxt(st.p100)}</small></dd>
-      <dt>Süper · +200 $</dt><dd class="num">${SV.fmt(p.lv[2])} <small>${pc(p.lv[2])} · ${pctTxt(st.p200)}</small></dd></dl>
-    <p class="note">Backtest (BTC, ETH, BNB, SOL, XRP · 1s/4s/1G, 30 gün): bu grup (${grp}) ${st.n} işlem; yüzdeler o kademeye stoptan önce ulaşma oranı. İşlem başına ortalama ${usdTxt(st.usd)} (1.000 $ için). Haftalık (7 gün) bakışta +50 $ oranı ${pctTxt(st.w7)}, ortalama ${usdTxt(st.usd7)}. Rastgele girişte +%5'in −%5'ten önce gelme oranı ≈ ${pctTxt(SV.scen.STATS.rand50)}.${split} ${here}${st.n < 60 ? ' <b>Örnek az, oranlar güvenilir değil.</b>' : ''}${!good && sc.strong && sc.aligned ? '' : ''}</p>
-    <button class="btn sm" data-plan="${key}">Bu planı grafiğe çiz</button></div>`;
+    <p class="st ${stc}">${stt}</p>${doneTxt}
+    <p class="zn"><span class="num">${SV.fmt(sc.zone.lo)}${sc.zone.hi > sc.zone.lo ? '–' + SV.fmt(sc.zone.hi) : ''}</span> · ${sc.zone.names.join(' + ')}</p>
+    <ul class="ck">${checks}</ul>
+    <table class="lvt"><thead><tr><th></th><th>Fiyat</th><th>Olasılık</th></tr></thead><tbody>
+      ${row(sc.state === 'triggered' ? 'Giriş' : 'Giriş ~', p.entry, null)}
+      ${row('Stop −50 $', p.stop, null, 'down')}
+      ${row('+50 $', p.lv[0], st.p50, 'up')}
+      ${row('+100 $', p.lv[1], st.p100, 'up')}
+      ${row('+200 $', p.lv[2], st.p200, 'up')}
+    </tbody></table>
+    <p class="meta">30 günde ort. ${usdTxt(st.usd)} / işlem · ${st.n.toLocaleString('tr-TR')} örnek${st.n < 60 ? ' · <b>az örnek</b>' : ''}${sc.tested ? '' : ` · <b>${TFN[S.interval]} test edilmedi</b>`}</p>
+    <details class="how" data-k="${key}"><summary>Nasıl hesaplandı?</summary>
+      <p>${sh ? 'Fiyat dirence gelip iğne bırakır ve bölgenin altında kapatırsa o mumun kapanışından short.' : 'Fiyat desteğe inip iğne bırakır ve bölgenin üstünde kapatırsa o mumun kapanışından long.'} Stop %5 (−50 $). +50 $'da üçte biri kapatılır ve stop girişe çekilir, +100 $'da üçte biri, +200 $'da kalanı. Bölgeden 1 ATR'dan ya da %4'ten uzak kapanan mumlar giriş sayılmaz.</p>
+      <p>Backtest: BTC, ETH, BNB, SOL, XRP · 1s/4s/1G · 30 gün. Olasılık, o kademeye stoptan önce ulaşma oranı; rastgele girişte +%5'in −%5'ten önce gelme oranı ≈ %50. Bu grup: ${sc.strong ? 'güçlü' : 'zayıf'}, piyasa ${sc.aligned ? 'yönünde' : 'yönüne ters'}. Haftalık (7 gün) +50 $ oranı ${pctTxt(st.w7)}.${split}${here}${sc.tested ? '' : ' Bu kural sadece 1s, 4s ve 1G grafiklerde test edildi; bu zaman diliminde oranlar geçerli değil ve bildirim gönderilmez.'}</p>
+    </details>
+    <button class="btn sm" data-plan="${key}">Grafiğe çiz</button></div>`;
 }
 function marketBox() {
   const t = bars.length ? bars[bars.length - 1].t : Date.now() / 1000, rg = SV.scen.regime(t), M = SV.scen.STATS.market;
   if (!rg) return '<p class="note">Piyasa yönü: BTC aylık verisi yükleniyor…</p>';
   const bull = rg.dir > 0;
-  return `<div class="mkt ${bull ? 'bull' : 'bear'}"><b>Piyasa yönü: ${bull ? 'Boğa' : 'Ayı'}</b><span>BTC aylık kapanışı 10 aylık ortalamanın ${SV.pct(rg.dist * 100).replace('+', '')} ${bull ? 'üstünde' : 'altında'} · ${rg.since} aydır ${bull ? 'boğa' : 'ayı'}</span>
-    ${rg.next && rg.next.dir !== rg.dir ? `<span class="warn">BTC şu an ${SV.fmt(rg.next.price)}; bu ayın 10 aylık ortalaması ${SV.fmt(rg.next.sma)}. Ay böyle kapanırsa yön ${bull ? 'ayıya' : 'boğaya'} döner.</span>` : ''}
-    <small>Backtest (5 coin, günlük, 2018–2026): bu kural yön verdiğinde 90 gün içinde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} (2018–22) ve ${pctTxt(M.late.with)} (2023–26); ters yönde ${pctTxt(M.early.against)} ve ${pctTxt(M.late.against)}. 7–30 günlük hareketlerde belirgin fark yok. Yön değişimi ancak ay kapanışında olur.</small></div>`;
+  const why = `BTC aylık ${rg.side > 0 ? 'ortalamanın üstünde' : 'ortalamanın altında'}, ortalama ${rg.slope > 0 ? 'yükseliyor' : 'düşüyor'}${rg.side !== rg.dir ? ` (${bull ? 'düzeltme' : 'tepki'} olabilir)` : ''}`;
+  const warn = rg.next && rg.next.dir !== rg.dir ? `<span class="warn">Ay böyle kapanırsa ${bull ? 'ayıya' : 'boğaya'} döner.</span>` : '';
+  return `<div class="mkt ${bull ? 'bull' : 'bear'}"><b>Piyasa: ${bull ? 'Boğa' : 'Ayı'} <small>· ${rg.since} aydır</small></b><span>${why}</span>${warn}
+    <details class="how" data-k="mkt"><summary>Nasıl belirleniyor?</summary><p>BTC aylık kapanışı 10 aylık ortalamanın üstünde ve ortalama 2 ayda yükselmişse boğa, altında ve düşmüşse ayı; çelişirse önceki yön korunur. Sadece ay kapanışında değişir. Backtest (5 coin, 2018–2026): 90 günde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} / ${pctTxt(M.late.with)} (2018–22 / 2023–26), ters yön ${pctTxt(M.early.against)} / ${pctTxt(M.late.against)}. 8 yılda ${M.flips} kez yön değiştirdi.</p></details></div>`;
 }
 function renderIdea() {
   const box = $('idea');
@@ -414,16 +423,14 @@ function renderIdea() {
   const bias = score >= 1.5 ? ['up', 'Yukarı eğilimli'] : score <= -1.5 ? ['down', 'Aşağı eğilimli'] : ['', 'Kararsız'];
   const band = c => `<span class="num">${SV.fmt(c.lo)}${c.hi > c.lo ? ' – ' + SV.fmt(c.hi) : ''}</span> <span class="num ${c.mid >= price ? 'up' : 'down'}">(${SV.pct((c.mid - price) / price * 100)})</span>`;
   ideaAt = Date.now();
+  const openD = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.k));
   box.innerHTML = `
     ${marketBox()}
-    <p class="bias ${bias[0]}">Bu grafikte kısa vade: <b>${bias[1]}</b>${why.length ? ' · ' + why.join(', ') : ''}</p>
-    <dl class="zl">
-      <dt>En yakın direnç</dt><dd>${L.R1 ? band(L.R1) + '<br><small>' + L.R1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
-      <dt>En yakın destek</dt><dd>${L.S1 ? band(L.S1) + '<br><small>' + L.S1.names.join(' + ') + '</small>' : 'Yakında yok (±%25)'}</dd>
-    </dl>
+    <p class="bias ${bias[0]}" title="${why.join(', ')}">Bu grafikte kısa vade: <b>${bias[1]}</b></p>
     ${scenCard(L.short, 'short')}
     ${scenCard(L.long, 'long')}
-    <p class="note">Bölgeler aylık ve haftalık grafikteki trend, parabolik yay ve seviyelerden gelir. Panel 15 saniyede bir güncellenir (son: ${new Date(ideaAt).toLocaleTimeString('tr-TR')}). Yatırım tavsiyesi değildir; kararı sen verirsin.</p>`;
+    <p class="note">Yatırım tavsiyesi değildir · ${new Date(ideaAt).toLocaleTimeString('tr-TR')}</p>`;
+  for (const d of box.querySelectorAll('details[data-k]')) if (openD.has(d.dataset.k)) d.open = true;
 }
 const notified = {};
 let sigSeen = { key: '', i: Infinity };
@@ -613,7 +620,8 @@ function renderStats() {
 function renderLayers() {
   const box = $('layersBox');
   box.classList.toggle('closed', !S.layersOpen);
-  box.innerHTML = `<button class="lhead" data-x="toggle">${S.layersOpen ? '▾' : '▸'} Katmanlar</button>` + (S.layersOpen ? LAYERS.map(([k, name, sw]) =>
+  const anyOn = LAYERS.some(([k]) => S.layers[k]);
+  box.innerHTML = `<div class="lhrow"><button class="lhead" data-x="toggle">${S.layersOpen ? '▾' : '▸'} Katmanlar</button><button class="lall" data-x="all" aria-pressed="${anyOn}" title="${anyOn ? 'Tümünü gizle' : 'Tümünü göster'}" aria-label="${anyOn ? 'Tüm katmanları gizle' : 'Tüm katmanları göster'}"><span class="eye">${anyOn ? EYE_ON : EYE_OFF}</span></button></div>` + (S.layersOpen ? LAYERS.map(([k, name, sw]) =>
     `<button class="lrow${S.layers[k] ? '' : ' off'}" data-l="${k}" aria-pressed="${!!S.layers[k]}" title="${S.layers[k] ? 'Gizle' : 'Göster'}"><span class="eye">${S.layers[k] ? EYE_ON : EYE_OFF}</span><i class="sw ${sw}"></i>${name}</button>`).join('')
     + `<label class="lop">Saydamlık <input type="range" id="opacity" min="0.15" max="1" step="0.05" value="${S.opacity}" aria-label="Otomatik çizimlerin görünürlüğü"></label>`
     + `<label class="lop">Hacim boyu <input type="range" id="volH" min="0.04" max="0.35" step="0.01" value="${S.volH}" aria-label="Hacim göstergesinin yüksekliği"></label>` : '');
@@ -644,11 +652,16 @@ $('layersBox').addEventListener('click', e => {
   if (!b) return;
   if (b.dataset.x === 'toggle') { S.layersOpen = !S.layersOpen; save(); renderLayers(); return; }
   const k = b.dataset.l;
-  S.layers[k] = !S.layers[k]; save();
-  if (k === 'levels') renderLevels();
-  if (k === 'sma') renderSma();
-  if (k === 'pos') SV.trades.syncLines();
-  if (k === 'vol') applyVol();
+  if (b.dataset.x === 'all') {
+    if (LAYERS.some(([q]) => S.layers[q])) { S.layersPrev = { ...S.layers }; for (const [q] of LAYERS) S.layers[q] = false; }
+    else S.layers = { ...DEF.layers, ...(S.layersPrev || DEF.layers) };
+    save();
+  } else { S.layers[k] = !S.layers[k]; save(); }
+  const all = b.dataset.x === 'all';
+  if (all || k === 'levels') renderLevels();
+  if (all || k === 'sma') renderSma();
+  if (all || k === 'pos') SV.trades.syncLines();
+  if (all || k === 'vol') applyVol();
   renderSignals();
   renderLayers();
   overlay.invalidate();
