@@ -459,6 +459,8 @@ Kullanıcının örneklerindeki gibi uzun vadeli kavisli destek/direnç çizgisi
 
 - TradingView Lightweight Charts 4.2.3 (Apache 2.0). Fiyat verisi TradingView'den değil, Binance'ten gelir.
 - Lisans gereği atıf metni ve tradingview.com bağlantısı sağ panelin altında durmalı. Grafik üzerindeki logo `attributionLogo: false` ile kapalı.
+- **Kısa geçmişli pariteler (ör. altın XAUUSDT, 2026-01'de açıldı; haftalıkta ~50, aylıkta ~12 mum):** 60 mumdan az grafikte analiz yapılmaz. Önceden SMA 50/200 serileri bu durumda temizlenmediği için önceki paritenin (ör. BTC 2017'den) zamanları zaman ekseninde kalıyor, başka pariteden butonla geçince mumlar görünmüyordu (sayfa ilk açılışta sorun yoktu). Artık SMA serileri boşaltılıyor ve görünür aralık `max(-2, n-200)`'den başlıyor. İşlem fikri paneli bu durumda "en az 60 mum gerekiyor" yazar.
+- `server.py`: tarayıcı Hyperliquid aracı isteğini yarıda kesince (`ConnectionAbortedError` WinError 10053) uzun hata basmaz.
 - Sayfa açılışında çizimler mumlardan önce yüklenir; `drawings.js` içindeki `idxOfTime`, `timeOfIdx` ve `outcome` mum yokken güvenli değer döndürür (kayıtlı long/short çizimi varken açılışta `Cannot read properties of undefined (reading 't')` hatası ve grafiğin yüklenmemesi böyle düzeltildi).
 - `logicalToCoordinate` kesirli indekslerde güvenilir değil. `drawings.js` içindeki `X()` iki komşu mum arasında doğrusal ara değer hesaplar.
 

@@ -173,7 +173,7 @@ async function load() {
     vol.setData(bars.map(toV));
     analyzeNow();
     SV.trades.render(); SV.trades.syncLines(); SV.trades.refreshTickers();
-    chart.timeScale().setVisibleLogicalRange({ from: bars.length - 200, to: bars.length + 12 });
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(-2, bars.length - 200), to: bars.length + (bars.length < 200 ? 3 : 12) });
     setAuto(true);
     if (pendingFocus && pendingFocus.key === S.market + S.symbol) { showRange(pendingFocus.t0, pendingFocus.t1); pendingFocus = null; }
     hideMsg();
@@ -411,7 +411,8 @@ function renderIdea() {
 }
 function renderIdeaInner() {
   const box = $('idea');
-  if (!bars.length || !res || !res.ctx) { box.innerHTML = '<p class="empty">Hesaplanıyor…</p>'; idea = null; return; }
+  if (!bars.length || !res) { box.innerHTML = '<p class="empty">Hesaplanıyor…</p>'; idea = null; return; }
+  if (!res.ctx) { box.innerHTML = `${marketBox()}<p class="empty">Bu grafikte ${bars.length} mum var; senaryo için en az 60 mum gerekiyor. Daha kısa bir zaman dilimine geç.</p>`; idea = null; return; }
   if (!htfRaw['1M'] && !htfRaw['1w']) { box.innerHTML = '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'; idea = null; return; }
   const n = bars.length, price = bars[n - 1].c;
   const L = SV.scen.live(bars, res.ctx, htfPair(), closedCount(), S.market + S.symbol, S.interval);
@@ -525,7 +526,7 @@ function renderSma() {
   const on = S.layers.sma && res && res.ctx;
   sma50.applyOptions({ visible: !!on });
   sma200.applyOptions({ visible: !!on });
-  if (!res || !res.ctx) return;
+  if (!res || !res.ctx) { sma50.setData([]); sma200.setData([]); return; }
   const line = arr => bars.map((b, i) => arr[i] == null ? { time: b.t + TZ } : { time: b.t + TZ, value: arr[i] });
   sma50.setData(line(res.ctx.s50));
   sma200.setData(line(res.ctx.s200));
