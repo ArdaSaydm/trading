@@ -6,7 +6,7 @@
 <title>Seviye · Grafik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=20261124c">
 </head>
 <body>
 <header>
@@ -171,13 +171,14 @@
       <details>
         <summary>Sinyaller ne anlama geliyor?</summary>
         <dl class="defs">
-          <dt><i class="sw buy"></i>Buy</dt><dd>Üç kurulum: (1) Fiyat iğneyle son dibin altını süpürüp kapanışta geri alır (yüksek hacim), ardından 3 mum içinde yukarı onay mumu gelir. (2) Aynısı, SMA200 üstünde daha kısa iğneyle. (3) SMA200 üstünde daralmış bantlardan yukarı kırılım ya da güçlü hacimli alım mumu (kırılım alımı).</dd>
-          <dt><i class="sw buy"></i>Sell</dt><dd>Sadece fiyat SMA200 altındayken (düşüş rejimi): ya tepe süpürmesi ya da aşırı alım + direnç + Bollinger üst bandı gibi en az 4 koşul, ardından aşağı onay mumu.</dd>
+          <dt><i class="sw buy"></i>Buy</dt><dd>Salınım dibi: son 20 mumun en düşüğü, RSI 30 ya da altında (aşırı satım). Sonraki 5 mum içinde kapanış dip mumunun tepesini geçince çıkar. Piyasa yönüne (BTC aylık) ters olanlar soluk çizilir.</dd>
+          <dt><i class="sw buy"></i>Sell</dt><dd>Salınım tepesi: son 20 mumun en yükseği, RSI 70 ya da üstünde (aşırı alım). Sonraki 5 mum içinde kapanış tepe mumunun dibinin altına inince çıkar. Piyasa yönüne ters olanlar soluk çizilir.</dd>
           <dt><i class="sw ltb"></i>Mor P</dt><dd>Uzun vadeli sert düşüş uyarısı: fiyat ve SMA50, SMA200 altındayken SMA200'ün aşağı dönmesi. Sadece 4 saatlik ve üstü grafiklerde gösterilir; bir düşüş döneminde genelde bir kez çıkar.</dd>
-          <dt><i class="sw big bear"></i>Mor çizgi</dt><dd>Büyük düşüş riski: daralmış Bollinger bantlarından aşağı kırılım ya da SMA200 altında yüksek hacimli büyük kırmızı mum.</dd>
-          <dt><i class="sw big"></i>Yeşil çizgi</dt><dd>Büyük yükseliş ihtimali: daralmış bantlardan yukarı kırılım ya da SMA200 üstünde yüksek hacimli büyük yeşil mum.</dd>
-          <dt><i class="sw react"></i>Tepki</dt><dd>Aday işaret: iğneyle dip/tepe süpürüldü, onay bekleniyor. Onay gelirse Buy/Sell olur. Tek başına güvenilir değildir.</dd>
-          <dt><i class="sw rev"></i>Sarı çizgi</dt><dd>Yön değişebilir: RSI uyumsuzluğu ya da SMA50/SMA200 kesişimi.</dd>
+          <dt><i class="sw big bear"></i>Mor çizgi</dt><dd>Alım klimaksı (aşırı ısınma): RSI 85 ya da üstü, hacim ortalamanın 2,5 katı, yeşil mum. Geçmişte tek başına düşüş getirmedi; short sinyali değildir.</dd>
+          <dt><i class="sw big"></i>Yeşil çizgi</dt><dd>Satış klimaksı (kapitülasyon): RSI 22 ya da altı, hacim ortalamanın 2,5 katı, kırmızı mum. Sert tepki ihtimali. Dikey çizgiler 40 mumda en fazla bir kez çıkar.</dd>
+          <dt><i class="sw react"></i>Tepki</dt><dd>Aday işaret: dip/tepe + aşırı satım/alım, onay bekleniyor. Onay gelirse Buy/Sell olur.</dd>
+          <dt><i class="sw rev"></i>Sarı çizgi</dt><dd>Yön değişebilir: güçlü RSI uyumsuzluğu (önceki tepede RSI 70+, dipte 30−, fark 8 puandan fazla).</dd>
+          <dt><i class="sw orange"></i>Turuncu</dt><dd>Büyük (2 ay ve üstü, %30+) dönüş deseni, günlük mumdan. Altta: 1 yıllık dip son 30 günde, fiyat 1 yıllık tepenin en az %40 altında ve günlük kapanış 10 günlük ortalamanın üstüne çıktı. Üstte: fiyat 1 yıllık dibin en az %50 üstündeyken günlük kapanış 50 günlük ortalamanın altına indi. Aynı yönde 30 günde en fazla bir kez.</dd>
           <dt><i class="sw tr"></i>Trend çizgileri</dt><dd>Aylık, haftalık ve günlük mumlardaki tepe/diplerden çizilir. Sadece kırılmamış ve fiyata yakın olanlar görünür.</dd>
           <dt><i class="sw pat"></i>Formasyonlar</dt><dd>Grafikte yalnızca şu an oluşan ya da son 30 mumda kırılanlar görünür. Kesikli çizgi boyun çizgisi, "Hedef" ölçülen hareket hedefidir.</dd>
           <dt><i class="sw para"></i>Parabolik yay</dt><dd>Uzun vadeli kavisli destek ya da direnç. Etikette bugünkü değeri yazar; kırılırsa ok çıkar.</dd>
@@ -205,18 +206,19 @@
   <div class="ggrid" id="guideGrid"></div>
 </dialog>
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="store.js"></script>
-<script src="indicators.js"></script>
-<script src="patterns.js"></script>
-<script src="analysis.js"></script>
-<script src="zones.js"></script>
-<script src="scenario.js"></script>
-<script src="guide.js"></script>
-<script src="drawings.js"></script>
-<script src="trades.js"></script>
-<script src="history.js"></script>
-<script src="favs.js"></script>
-<script src="scan.js"></script>
-<script src="app.js"></script>
+<script src="store.js?v=20261124c"></script>
+<script src="indicators.js?v=20261124c"></script>
+<script src="patterns.js?v=20261124c"></script>
+<script src="analysis.js?v=20261124c"></script>
+<script src="zones.js?v=20261124c"></script>
+<script src="scenario.js?v=20261124c"></script>
+<script src="orange.js?v=20261124c"></script>
+<script src="guide.js?v=20261124c"></script>
+<script src="drawings.js?v=20261124c"></script>
+<script src="trades.js?v=20261124c"></script>
+<script src="history.js?v=20261124c"></script>
+<script src="favs.js?v=20261124c"></script>
+<script src="scan.js?v=20261124c"></script>
+<script src="app.js?v=20261124c"></script>
 </body>
 </html>

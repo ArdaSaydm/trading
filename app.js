@@ -12,7 +12,7 @@ const TZ = -new Date().getTimezoneOffset() * 60;
 const DEF = {
   market: 'spot', symbol: 'BTCUSDT', interval: '4h', pivot: 5, levels: 5, tol: 0.6, sens: 4, cool: 20, ext: 20, depth: 3000, layersOpen: true, log: false, opacity: 0.5, notify: false, volH: 0.18,
   account: 1000, riskPct: 1, view: 'chart', dom: 'CRYPTOCAP:BTC.D',
-  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
+  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, orange: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
 };
 const S = JSON.parse(JSON.stringify(DEF));
 {
@@ -22,7 +22,7 @@ const S = JSON.parse(JSON.stringify(DEF));
 const save = () => SV.store.set('seviye', S);
 if (!('layersOpen' in SV.store.get('seviye', {})) && innerWidth < 700) S.layersOpen = false;
 const LAYERS = [
-  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'],
+  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'], ['orange', 'Turuncu (büyük dönüş)', 'orange'],
   ['pat', 'Formasyonlar', 'pat'], ['para', 'Parabolik yay', 'para'], ['htf1M', 'Aylık trend', 'tr w3'], ['htf1w', 'Haftalık trend', 'tr w2'],
   ['htf1d', 'Günlük trend', 'tr'], ['levels', 'Destek / direnç', 'lv'], ['sma', 'SMA 50 / 200', 'sma'], ['vol', 'Hacim', 'volb'], ['pos', 'İşlemlerim', 'pos'], ['hist', 'Geçmiş işlemlerim', 'hist']
 ];
@@ -316,6 +316,22 @@ function computeHtf() {
     renderSignals();
     renderStats();
   }
+  if (res && res.ctx && htfRaw['1d']) {
+    const d = closedH('1d'), list = SV.orange.detect(d), step = STEP[S.interval], add = [], seen = new Set(), gap = S.interval === '1M' ? 3 : S.interval === '1w' ? 8 : 0, lastI = { 1: -1e9, '-1': -1e9 };
+    for (const o of list) {
+      const target = step >= 86400 ? o.t : o.t + 86400 - step;
+      let lo = 0, hi = bars.length - 1, i = -1;
+      while (lo <= hi) { const m = (lo + hi) >> 1; if (bars[m].t <= target) { i = m; lo = m + 1; } else hi = m - 1; }
+      if (i < 0 || target >= bars[i].t + step || seen.has(i + ':' + o.dir) || i - lastI[o.dir] < gap) continue;
+      seen.add(i + ':' + o.dir); lastI[o.dir] = i;
+      add.push({ i, type: 'orange', dir: o.dir, why: o.why });
+    }
+    res.signals = res.signals.filter(s => s.type !== 'orange').concat(add).sort((a, b) => a.i - b.i);
+    res.stats = { ...res.stats, orange: SV.orange.stats(d, list) };
+    indexSignals();
+    renderSignals();
+    renderStats();
+  }
   renderState();
   renderIdea();
   checkSignalAlerts();
@@ -323,9 +339,12 @@ function computeHtf() {
   overlay.invalidate();
 }
 
+const DIRS = { buy: 1, bull: 1, sell: -1, bear: -1 };
 function indexSignals() {
   sigByIndex = new Map();
   for (const s of res.signals) {
+    const rg = DIRS[s.type] && SV.scen ? SV.scen.regime(bars[s.i].t) : null;
+    s.mk = rg && rg.dir ? (rg.dir === DIRS[s.type] ? 1 : -1) : 0;
     if (!sigByIndex.has(s.i)) sigByIndex.set(s.i, []);
     sigByIndex.get(s.i).push(s);
   }
@@ -346,7 +365,7 @@ async function loadBtcMonthly() {
       if (!r.ok) continue;
       btcM = (await r.json()).map(parse); btcAt = Date.now();
       SV.scen.setMarket(btcM);
-      if (bars.length && res) { scenHist = null; computeHtf(); }
+      if (bars.length && res) { scenHist = null; indexSignals(); renderSignals(); computeHtf(); }
       return;
     } catch (e) {}
   }
@@ -373,7 +392,7 @@ function scenCard(sc, key) {
   const tierName = ['', '+50 $', '+100 $', '+200 $'];
   const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu bölgeden çok uzakta kapattı; giriş için geç.</p>`
     : sc.done ? `<p class="note">Son kurulum: ${sc.done.state === 'full' ? '+200 $ oldu' : sc.done.state === 'be' ? `${tierName[sc.done.tier]} görüldü, kalanı başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce).</p>` : '';
-  const ck = { 0: '2+ kaynak', 1: sh ? 'SMA200 altı' : 'SMA200 üstü' };
+  const ck = { 0: 'Trend çizgisi' };
   const checks = sc.checks.map((c, k) => `<li class="${c.ok ? 'ok' : 'no'}" title="${c.text}">${c.ok ? '✓' : '✗'} ${c.market ? 'Piyasa yönünde' : ck[k]}</li>`).join('');
   const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
   const split = st.tr != null ? ` Coin bölmesi: BTC/ETH/BNB ${pctTxt(st.tr)}, SOL/XRP ${pctTxt(st.te)}.` : '';
@@ -382,7 +401,7 @@ function scenCard(sc, key) {
     <h3>${title} ${tier}</h3>
     <p class="st ${stc}">${stt}</p>${doneTxt}
     <p class="zn"><span class="num">${SV.fmt(sc.zone.lo)}${sc.zone.hi > sc.zone.lo ? '–' + SV.fmt(sc.zone.hi) : ''}</span> · ${sc.zone.names.join(' + ')}</p>
-    <ul class="ck">${checks}</ul>
+    <ul class="ck">${checks}</ul>${sc.strong && !sc.aligned ? `<p class="note down">Trend teması piyasa yönüne ters: geçmişte çoğunlukla kırıldı (+50 $ ${pctTxt(st.p50)}).</p>` : ''}
     <table class="lvt"><thead><tr><th></th><th>Fiyat</th><th>Olasılık</th></tr></thead><tbody>
       ${row(sc.state === 'triggered' ? 'Giriş' : 'Giriş ~', p.entry, null)}
       ${row('Stop −50 $', p.stop, null, 'down')}
@@ -437,6 +456,7 @@ function renderIdeaInner() {
   box.innerHTML = `
     ${marketBox()}
     <p class="bias ${bias[0]}" title="${why.join(', ')}">Bu grafikte kısa vade: <b>${bias[1]}</b></p>
+    ${orangeLine()}
     ${scenCard(L.short, 'short')}
     ${scenCard(L.long, 'long')}
     <p class="note">Yatırım tavsiyesi değildir · ${new Date(ideaAt).toLocaleTimeString('tr-TR')}</p>`;
@@ -500,6 +520,8 @@ $('notifyBtn').addEventListener('click', async () => {
 });
 
 $('idea').addEventListener('click', e => {
+  const og = e.target.closest('[data-oi]');
+  if (og) { const i = +og.dataset.oi; chart.timeScale().setVisibleLogicalRange({ from: i - 120, to: i + 60 }); return; }
   const b = e.target.closest('[data-plan]');
   if (!b || !idea || !idea.plans) return;
   const p = idea.plans[b.dataset.plan], last = bars[bars.length - 1];
@@ -562,6 +584,12 @@ function renderLevelTable() {
 }
 
 const word = d => d === 'up' ? '<span class="up">Yükseliş</span>' : d === 'down' ? '<span class="down">Düşüş</span>' : '—';
+function orangeLine() {
+  const o = res && res.signals ? res.signals.filter(x => x.type === 'orange').pop() : null;
+  if (!o) return '<p class="oline">Son turuncu: bu grafikte yok</p>';
+  const t = bars[o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
+  return `<p class="oline">Son turuncu: <button class="ogo" data-oi="${o.i}"><span class="tag orange">${o.dir > 0 ? '↑ Dip' : '↓ Tepe'}</span> ${new Date(t * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })} · ${ago ? ago + ' gün önce' : 'bugün'}</button></p>`;
+}
 function renderState() {
   const st = res && res.state;
   if (!st) { $('state').innerHTML = '<p class="empty">Analiz için en az 60 mum gerekiyor.</p>'; return; }
@@ -590,12 +618,12 @@ function renderState() {
   $('state').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 }
 
-const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P' };
+const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P', orange: 'Turuncu' };
 const dtf = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : S.layers.big;
+const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : S.layers.big;
 function renderSignals() {
   const list = res ? res.signals.filter(sigOn).slice(-25).reverse() : [];
-  $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why.join(' · ')}</span></button></li>`).join('')
+  $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why.join(' · ')}${s.mk < 0 ? ' · piyasa yönüne ters' : ''}</span></button></li>`).join('')
     : '<li class="empty">Bu aralıkta sinyal yok.</li>';
 }
 $('sigs').addEventListener('click', e => {
@@ -612,7 +640,8 @@ const STAT_ROWS = [
   ['ltb', 'P', '100 mum sonra fiyat daha aşağıda mı (sadece 4s ve üstü)'],
   ['bear', 'Mor', '40 mumda 4 ATR düşüş, önce 2 ATR yükseliş gelmeden'],
   ['bull', 'Yeşil', '40 mumda 4 ATR yükseliş, önce 2 ATR düşüş gelmeden'],
-  ['react', 'Tepki', 'Aday işaret: 6 mumda 1 ATR, önce 0,7 ATR ters gelmeden']
+  ['react', 'Tepki', 'Aday işaret: 6 mumda 1 ATR, önce 0,7 ATR ters gelmeden'],
+  ['orange', 'Turuncu', 'Günlük mumdan. Başarı: 90 gün içinde sinyal yönünde en az %30 hareket. Ortalama: 90 günlük getiri (sinyal yönünde). Fark: rastgele günlere göre']
 ];
 function renderStats() {
   const st = (res && res.stats) || {};
@@ -620,8 +649,8 @@ function renderStats() {
   $('stats').innerHTML = STAT_ROWS.map(([k, name, rule]) => {
     const o = st[k];
     if (!o || !o.n) return `<tr title="${rule}"><td><span class="tag ${k}">${name}</span></td><td class="num">0</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>`;
-    const rate = o.win / o.n * 100, avg = o.r / o.n, edge = (o.r - o.base) / o.n, pct = o.unit === '%';
-    const avgTxt = pct ? `${avg >= 0 ? '−' : '+'}%${num(Math.abs(avg), 1)}` : `${avg >= 0 ? '+' : ''}${num(avg)}R`;
+    const rate = o.win / o.n * 100, avg = o.r / o.n, edge = (o.r - o.base) / o.n, pct = o.unit === '%' || o.unit === 'g';
+    const avgTxt = o.unit === 'g' ? `${avg >= 0 ? '+' : '−'}%${num(Math.abs(avg), 1)}` : pct ? `${avg >= 0 ? '−' : '+'}%${num(Math.abs(avg), 1)}` : `${avg >= 0 ? '+' : ''}${num(avg)}R`;
     const edgeTxt = pct ? `${edge >= 0 ? '+' : ''}${num(edge, 1)} puan` : `${edge >= 0 ? '+' : ''}${num(edge)}R`;
     return `<tr title="${rule}"><td><span class="tag ${k}">${name}</span></td><td class="num">${o.n}</td><td class="num ${rate >= 50 ? 'up' : ''}">%${rate.toFixed(0)}</td><td class="num">${avgTxt}</td><td class="num ${edge > 0 ? 'up' : 'down'}">${edgeTxt}</td></tr>`;
   }).join('');
@@ -700,7 +729,9 @@ function renderPatterns() {
   const act = all.filter(x => x.p.active).reverse(), old = all.filter(x => !x.p.active).slice(-12).reverse();
   const row = ({ p, i }) => {
     const o = p.outlook, live = p.status === 'forming' || p.status === 'confirmed';
-    const out = o && live ? `<span class="why"><b class="${o.dir > 0 ? 'up' : 'down'}">${o.dir > 0 ? '↑' : '↓'} Hedef ${SV.fmt(o.target)} · olasılık %${Math.round(o.prob * 100)}</b>${o.weak ? ' (zayıf örnek)' : ''}<br>${o.text}</span>` : p.target != null ? `<span class="why">Hedef ${SV.fmt(p.target)}</span>` : '';
+    const lc = bars[bars.length - 1].c, tg = x => `${SV.fmt(x)} (${SV.pct((x - lc) / lc * 100)})`;
+    const out = o && live && p.brk == null && o.pDir < 0.6 ? `<span class="why"><b>Yön belirsiz</b> · aşağı %${Math.round((o.dir < 0 ? o.pDir : 1 - o.pDir) * 100)} / yukarı %${Math.round((o.dir > 0 ? o.pDir : 1 - o.pDir) * 100)} (geçmişte ${o.n} örnek)</span>`
+      : o && live ? `<span class="why"><b class="${o.dir > 0 ? 'up' : 'down'}">${o.dir > 0 ? '↑' : '↓'} Hedef ${tg(o.target)} · olasılık %${Math.round(o.prob * 100)}</b>${o.weak ? ' (zayıf örnek)' : ''}<br>${o.text}</span>` : p.target != null ? `<span class="why">Hedef ${tg(p.target)}</span>` : '';
     return `<li><button data-p="${i}"${patSel === i ? ' aria-current="true"' : ''}><span class="tag ${p.bull === true ? 'buy' : p.bull === false ? 'sell' : 'neu'}">${p.name}</span><span class="st ${p.active ? 'act' : ''}">${p.active ? 'Aktif · ' : ''}${PST[p.status]}</span><time>${dtf.format(bars[p.last].t * 1000)}</time>${out}</button></li>`;
   };
   $('pats').innerHTML = (act.length ? act.map(row).join('') : '<li class="empty">Şu an aktif formasyon yok.</li>') + old.map(row).join('');

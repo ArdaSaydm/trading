@@ -28,6 +28,7 @@ SV.patterns = (() => {
 
   const down = (x, h) => Math.max(x - h, x * x / (x + h));
   const through = (a, b) => i => a.p + (b.p - a.p) * (i - a.i) / ((b.i - a.i) || 1);
+  const throughL = (a, b) => i => Math.exp(Math.log(a.p) + (Math.log(b.p) - Math.log(a.p)) * (i - a.i) / ((b.i - a.i) || 1));
 
   function track(bars, from, o) {
     const n = bars.length, lim = Math.min(n, from + o.max);
@@ -99,7 +100,7 @@ SV.patterns = (() => {
     const P = seq.slice(j - 4, j + 1), H = P.filter(p => p.kind === 'h'), Lw = P.filter(p => p.kind === 'l');
     const i0 = P[0].i, e = P[4].i, a = A[e], n = bars.length;
     if (e - i0 < 15) return;
-    const top = through(H[0], H[H.length - 1]), bot = through(Lw[0], Lw[Lw.length - 1]);
+    const top = throughL(H[0], H[H.length - 1]), bot = throughL(Lw[0], Lw[Lw.length - 1]);
     if (H.length === 3 && Math.abs(H[1].p - top(H[1].i)) > a * 0.6) return;
     if (Lw.length === 3 && Math.abs(Lw[1].p - bot(Lw[1].i)) > a * 0.6) return;
     for (let k = i0; k <= e; k++) {
@@ -128,15 +129,15 @@ SV.patterns = (() => {
       target: (i, up) => up ? bars[i].c + w0 : down(bars[i].c, w0),
       after: (i, up) => up ? bars[i].c < bot(i) : bars[i].c > top(i)
     });
-    const endI = r.brk ?? Math.min(n - 1 + 8, e + 25);
+    const endI = r.brk ?? Math.min(n - 1 + Math.max(3, Math.min(8, Math.round((e - i0) * 0.2))), e + 25);
     const bull = r.brk != null ? r.bull : bias > 0 ? true : bias < 0 ? false : null;
     const ref = bars[n - 1].c;
     const target = r.target ?? (bull === true ? ref + w0 : bull === false ? down(ref, w0) : null);
     out.push({
       type, start: i0, last: e, pts: P, ...r, bull, target, height: w0,
       lines: [
-        { a: { i: i0, p: top(i0) }, b: { i: endI, p: top(endI) }, role: 'top' },
-        { a: { i: i0, p: bot(i0) }, b: { i: endI, p: bot(endI) }, role: 'bot' }
+        { a: { i: i0, p: top(i0) }, b: { i: endI, p: top(endI) }, role: 'top', lg: true },
+        { a: { i: i0, p: bot(i0) }, b: { i: endI, p: bot(endI) }, role: 'bot', lg: true }
       ]
     });
   }

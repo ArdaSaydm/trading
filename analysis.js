@@ -115,7 +115,7 @@ SV.analysis = (() => {
         if (pc.i - pa.i < n * 0.25 || pb.i - pa.i < L * 2 || pc.i - pb.i < L * 2) continue;
         const pts = [pa, pb, pc].map(p => [u(bars[p.i].t), lg(p.p)]);
         const q = solve(pts);
-        if (!q) continue;
+        if (!q || sg * q.c2 <= 0) continue;
         const chord = pts[0][1] + (pts[2][1] - pts[0][1]) * (pts[1][0] - pts[0][0]) / (pts[2][0] - pts[0][0]);
         if (Math.abs(pts[1][1] - chord) < Math.max(0.06, 3 * tolAt(pb.i))) continue;
         const f = t => q.c0 + q.c1 * u(t) + q.c2 * u(t) ** 2;
@@ -124,6 +124,10 @@ SV.analysis = (() => {
           if (sg * (lg(bars[k].c) - f(bars[k].t)) < -tolAt(k)) ok = false;
         }
         if (!ok) continue;
+        const gaps = [];
+        for (let k = pa.i; k <= pc.i; k++) gaps.push(sg * (lg(sg > 0 ? bars[k].l : bars[k].h) - f(bars[k].t)));
+        gaps.sort((x, y) => x - y);
+        if (gaps[Math.floor(gaps.length / 2)] > 0.25 || gaps[gaps.length - 1] > 0.8) continue;
         const now = Math.exp(f(nowT));
         if (!isFinite(now) || Math.abs(now - lastPrice) / lastPrice > maxDist) continue;
         const touches = P.filter(x => x.i >= pa.i && Math.abs(lg(x.p) - f(bars[x.i].t)) <= tolAt(x.i) * 1.2).length;
@@ -139,79 +143,52 @@ SV.analysis = (() => {
 
   function signals(bars, ctx, L, S) {
     const n = bars.length, out = [];
-    const { atr: A, rsi: R, bbUp, bbLo, bbW, s50, s200, volAvg } = ctx;
+    const { rsi: R, s50, s200, volAvg } = ctx;
     const piv = pivots(bars, L);
     const queue = [...piv.highs, ...piv.lows].sort((a, b) => a.i - b.i);
-    const known = [];
-    const insert = v => { let lo = 0, hi = known.length; while (lo < hi) { const m = (lo + hi) >> 1; if (known[m] < v) lo = m + 1; else hi = m; } known.splice(lo, 0, v); };
-    const near = (v, tol, pred) => {
-      let lo = 0, hi = known.length;
-      while (lo < hi) { const m = (lo + hi) >> 1; if (known[m] < v - tol) lo = m + 1; else hi = m; }
-      for (let k = lo; k < known.length && known[k] <= v + tol; k++) if (pred(known[k])) return true;
-      return false;
-    };
-    const EXT = S.ext || 20;
-    let q = 0, lastH = null, lastL = null, inSq = false, sqAge = 1e9, cdSq = -1e9, cdCl = -1e9;
-    const cd = { buy: -1e9, sell: -1e9, big: -1e9, rev: -1e9, react: -1e9, ltb: -1e9 };
+    const EXT = S.ext || 20, K = 5, RL = 30, RH = 70;
+    let q = 0, lastH = null, lastL = null;
+    const cd = { big: -1e9, rev: -1e9, ltb: -1e9, r1: -1e9, r_1: -1e9 };
     const LM = 15, queueM = pivots(bars, LM).highs;
     let qm = 0, lastMH = null, macroDiv = -1e9;
     let fresh = true;
     const add = (i, type, why, extra) => out.push({ i, type, why, ...extra });
     const longTF = !S.interval || ['4h', '1d', '1w', '1M'].includes(S.interval);
-    const kl = [], kh = [];
-    const M5 = { bA: null, bB: null, sS: null, sR: null };
-    const tryConfirm = (key, i, dir, emit) => {
-      const c = M5[key];
-      if (!c || i <= c.i || i - c.i > 3) { if (c && i - c.i > 3) M5[key] = null; return; }
-      const b = bars[i], j = bars[c.i];
-      const ok = dir > 0 ? b.c > j.h && b.c > b.o : b.c < j.l && b.c < b.o;
-      if (ok) {
-        let ext = dir > 0 ? Infinity : -Infinity;
-        for (let k = c.i; k <= i; k++) ext = dir > 0 ? Math.min(ext, bars[k].l) : Math.max(ext, bars[k].h);
-        emit(c, ext);
-        M5[key] = null;
-      } else if (dir > 0 ? b.l < j.l : b.h > j.h) M5[key] = null;
+    const last = { buy: null, sell: null }, used = { buy: -1, sell: -1 };
+    const isExt = (j, i, dir) => {
+      const ex = dir > 0 ? bars[j].l : bars[j].h;
+      for (let k = Math.max(0, j - EXT); k <= i; k++) if (k !== j && (dir > 0 ? bars[k].l < ex : bars[k].h > ex)) return false;
+      return true;
+    };
+    const rsiExt = (j, dir) => {
+      let r = dir > 0 ? 100 : 0;
+      for (let k = Math.max(0, j - 2); k <= j; k++) if (R[k] != null) r = dir > 0 ? Math.min(r, R[k]) : Math.max(r, R[k]);
+      return r;
     };
 
     for (let i = 1; i < n; i++) {
       while (q < queue.length && queue[q].i + L <= i) {
         const p = queue[q++];
-        insert(p.p);
         const prev = p.kind === 'h' ? lastH : lastL;
-        if (prev && p.i - prev.i <= 80 && R[p.i] != null && R[prev.i] != null && i - cd.rev >= 20) {
-          if (p.kind === 'h' && p.p > prev.p && R[p.i] < R[prev.i] - 5 && R[prev.i] >= 62) {
+        if (prev && p.i - prev.i <= 80 && R[p.i] != null && R[prev.i] != null && i - cd.rev >= 60) {
+          if (p.kind === 'h' && p.p > prev.p && R[p.i] < R[prev.i] - 8 && R[prev.i] >= 70) {
             add(i, 'rev', ['Ayı uyumsuzluğu', 'fiyat daha yüksek tepe, RSI daha düşük']); cd.rev = i;
           }
-          if (p.kind === 'l' && p.p < prev.p && R[p.i] > R[prev.i] + 5 && R[prev.i] <= 38) {
+          if (p.kind === 'l' && p.p < prev.p && R[p.i] > R[prev.i] + 8 && R[prev.i] <= 30) {
             add(i, 'rev', ['Boğa uyumsuzluğu', 'fiyat daha düşük dip, RSI daha yüksek']); cd.rev = i;
           }
         }
-        if (p.kind === 'h') { lastH = p; kh.push(p); } else { lastL = p; kl.push(p); }
+        if (p.kind === 'h') lastH = p; else lastL = p;
       }
       while (qm < queueM.length && queueM[qm].i + LM <= i) {
         const p = queueM[qm++];
         if (lastMH && p.p > lastMH.p && R[p.i] != null && R[lastMH.i] != null && R[p.i] < R[lastMH.i] - 5 && R[lastMH.i] >= 65) macroDiv = i;
         lastMH = p;
       }
-      if (i < 21 || R[i] == null) continue;
+      if (i < 25 || R[i] == null) continue;
 
-      const b = bars[i], a = A[i], rng = b.h - b.l || a * 1e-6;
+      const b = bars[i];
       const volR = volAvg[i - 1] ? b.v / volAvg[i - 1] : 1;
-      const r3min = Math.min(R[i], R[i - 1] ?? 100, R[i - 2] ?? 100);
-      const r3max = Math.max(R[i], R[i - 1] ?? 0, R[i - 2] ?? 0);
-      let lo20 = Infinity, hi20 = -Infinity;
-      for (let k = Math.max(0, i - EXT); k < i; k++) { if (bars[k].l < lo20) lo20 = bars[k].l; if (bars[k].h > hi20) hi20 = bars[k].h; }
-      const atLow = b.l <= lo20 + a * 0.25, atHigh = b.h >= hi20 - a * 0.25;
-      const s50ok = s50[i] != null && s200[i] != null && s50[i - 5] != null;
-      const strongDown = s50ok && b.c < s50[i] && s50[i] < s200[i] && s50[i] < s50[i - 5];
-      const strongUp = s50ok && b.c > s50[i] && s50[i] > s200[i] && s50[i] > s50[i - 5];
-      const body = Math.abs(b.c - b.o), lw = Math.min(b.o, b.c) - b.l, uw = b.h - Math.max(b.o, b.c);
-
-      if (s50[i] != null && s200[i] != null && s50[i - 1] != null && s200[i - 1] != null && i - cd.rev >= 20) {
-        const d0 = s50[i - 1] - s200[i - 1], d1 = s50[i] - s200[i];
-        if (d0 <= 0 && d1 > 0) { add(i, 'rev', ['Altın kesişim', 'SMA50, SMA200\'ü yukarı kesti']); cd.rev = i; }
-        if (d0 >= 0 && d1 < 0) { add(i, 'rev', ['Ölüm kesişimi', 'SMA50, SMA200\'ü aşağı kesti']); cd.rev = i; }
-      }
 
       if (s200[i] != null && b.c > s200[i]) fresh = true;
       if (i >= 160 && s200[i] != null && s50[i] != null && b.c < s200[i] && s50[i] < s200[i] && i - cd.ltb >= 150 && (fresh || i - cd.ltb >= 400)) {
@@ -221,61 +198,35 @@ SV.analysis = (() => {
         if (why.length && longTF) { add(i, 'ltb', ['Uzun vadeli sert düşüş uyarısı', 'fiyat ve SMA50, SMA200 altında', ...why]); cd.ltb = i; fresh = false; }
       }
 
-      if (i >= 210 && s200[i] != null) {
-        const emitBuy = (c, ext) => { if (i - cd.buy >= 5) { add(i, 'buy', c.why, { stop: ext, from: c.i }); cd.buy = i; } };
-        const emitSell = (c, ext) => { if (i - cd.sell >= 10 && (!c.gateAtConfirm || b.c < s200[i])) { add(i, 'sell', c.why, { stop: ext, from: c.i }); cd.sell = i; } };
-        tryConfirm('bA', i, 1, emitBuy);
-        tryConfirm('bB', i, 1, emitBuy);
-        tryConfirm('sS', i, -1, emitSell);
-        tryConfirm('sR', i, -1, emitSell);
-        const lastLow = kl[kl.length - 1];
-        if (lastLow && i - lastLow.i <= 60 && b.l < lastLow.p && b.c > lastLow.p && volR >= 1.3 && lw >= rng * 0.3) {
-          const base = ['Dip süpürüldü, fiyat geri aldı', `alt iğne ${(lw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'onay: sonraki mum yukarı kapattı'];
-          if (lw >= a * 0.6) M5.bA = { i, why: base };
-          if (lw >= a * 0.3 && b.c > s200[i]) M5.bB = { i, why: [...base, 'trend yukarı (SMA200 üstü)'] };
-          if ((lw >= a * 0.6 || (lw >= a * 0.3 && b.c > s200[i])) && i - cd.react >= 5) { add(i, 'react', ['Dip süpürüldü: yukarı tepki adayı', `alt iğne ${(lw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'sonraki 3 mumda onay gelirse Buy olur'], { dir: 1 }); cd.react = i; }
+      for (const dir of [1, -1]) {
+        const ty = dir > 0 ? 'buy' : 'sell';
+        for (let j = i - 1; j >= i - K && j > 20; j--) {
+          if (j <= used[ty]) break;
+          if (!isExt(j, i, dir)) continue;
+          const rx = rsiExt(j, dir);
+          if (dir > 0 ? rx > RL : rx < RH) continue;
+          if (dir > 0 ? b.c <= bars[j].h : b.c >= bars[j].l) continue;
+          const ex = dir > 0 ? bars[j].l : bars[j].h, P = last[ty];
+          if (P && i - P.i < 5) continue;
+          if (P && i - P.i < 30 && (dir > 0 ? ex >= P.ext : ex <= P.ext)) continue;
+          const why = dir > 0
+            ? ['Salınım dibi', `RSI ${rx.toFixed(0)} (aşırı satım)`, `son ${EXT} mumun en düşüğü`, 'onay: kapanış dip mumunun tepesinin üstünde']
+            : ['Salınım tepesi', `RSI ${rx.toFixed(0)} (aşırı alım)`, `son ${EXT} mumun en yükseği`, 'onay: kapanış tepe mumunun dibinin altında'];
+          add(i, ty, why, { stop: ex, from: j });
+          last[ty] = { i, ext: ex }; used[ty] = j;
+          break;
         }
-        for (let m = kh.length - 1; m >= 0 && m >= kh.length - 3; m--) {
-          const p = kh[m];
-          if (i - p.i > 60) break;
-          if (b.h > p.p && b.c < p.p) {
-            if (volR >= 1.3 && uw >= a * 0.6 && uw >= rng * 0.3 && b.c < s200[i]) {
-              M5.sS = { i, why: ['Tepe süpürüldü, fiyat geri düştü', `üst iğne ${(uw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'trend aşağı (SMA200 altı)', 'onay: sonraki mum aşağı kapattı'] };
-              if (i - cd.react >= 5) { add(i, 'react', ['Tepe süpürüldü: aşağı tepki adayı', `üst iğne ${(uw / a).toFixed(1)} ATR`, `hacim ×${volR.toFixed(1)}`, 'sonraki 3 mumda onay gelirse Sell olur'], { dir: -1 }); cd.react = i; }
-            }
-            break;
-          }
-        }
-        if (atHigh) {
-          const pts = [];
-          if (R[i] >= 65) pts.push(`RSI ${R[i].toFixed(0)}`);
-          if (r3max >= 70) pts.push('aşırı alım');
-          if (bbUp[i] != null && b.h >= bbUp[i]) pts.push('üst Bollinger bandı');
-          if (near(b.h, a * 0.5, p => b.c < p)) pts.push('direnç');
-          if (volR >= 1.5) pts.push(`hacim ×${volR.toFixed(1)}`);
-          if (lastH && i - lastH.i <= 60 && b.h > lastH.p && R[lastH.i] != null && R[i] < R[lastH.i] - 3) pts.push('RSI uyumsuzluğu');
-          if (pts.length >= 4) M5.sR = { i, gateAtConfirm: true, why: [...pts, 'trend aşağı (SMA200 altı)', 'onay: sonraki mum aşağı kapattı'] };
+        if (i - cd['r' + dir] >= 15 && isExt(i, i, dir) && (dir > 0 ? rsiExt(i, 1) <= RL : rsiExt(i, -1) >= RH)) {
+          add(i, 'react', dir > 0
+            ? ['Dip + aşırı satım: Buy adayı', `RSI ${R[i].toFixed(0)}`, `sonraki ${K} mumda bu mumun tepesi üstünde kapanış gelirse Buy olur`]
+            : ['Tepe + aşırı alım: Sell adayı', `RSI ${R[i].toFixed(0)}`, `sonraki ${K} mumda bu mumun dibi altında kapanış gelirse Sell olur`], { dir });
+          cd['r' + dir] = i;
         }
       }
 
-      if (i >= 210 && bbW[i] != null && s200[i] != null) {
-        const m = median(bbW.slice(i - 120, i)), sq = m != null && bbW[i] <= m * 0.65, up = b.c > s200[i];
-        if (sq) { inSq = true; sqAge = 0; } else sqAge++;
-        const cands = [];
-        if (inSq && sqAge <= 20 && !sq) {
-          if (b.c > bbUp[i]) { if (i - cdSq >= 40) { cands.push([1, ['Sıkışmadan yukarı kırılım', 'Bollinger bantları daralmıştı', 'büyük yükseliş ihtimali']]); cdSq = i; } inSq = false; }
-          else if (b.c < bbLo[i]) { if (i - cdSq >= 40) { cands.push([-1, ['Sıkışmadan aşağı kırılım', 'Bollinger bantları daralmıştı', 'büyük düşüş riski']]); cdSq = i; } inSq = false; }
-        }
-        if (sqAge > 20) inSq = false;
-        if (volR >= 2.5 && rng >= 2 * a && i - cdCl >= 40) {
-          if (b.c > b.o && up) { cands.push([1, ['Trend yönünde güçlü alım mumu', `hacim ×${volR.toFixed(1)}`, 'SMA200 üstü', 'büyük yükseliş ihtimali']]); cdCl = i; }
-          else if (b.c < b.o && !up) { cands.push([-1, ['Trend yönünde güçlü satış mumu', `hacim ×${volR.toFixed(1)}`, 'SMA200 altı', 'büyük düşüş riski']]); cdCl = i; }
-        }
-        for (const [dir, why] of cands) {
-          if (i - cd.big < 40) continue;
-          add(i, dir > 0 ? 'bull' : 'bear', why); cd.big = i;
-          if (dir > 0 && up && i - cd.buy >= 5) { add(i, 'buy', ['Kırılım alımı', ...why.slice(0, 2), 'SMA200 üstü'], { stop: Math.min(b.l, bars[i - 1].l), from: i }); cd.buy = i; }
-        }
+      if (i - cd.big >= 40 && volR >= 2.5) {
+        if (R[i] <= 22 && b.c < b.o) { add(i, 'bull', ['Satış klimaksı (kapitülasyon)', `RSI ${R[i].toFixed(0)}`, `hacim ×${volR.toFixed(1)}`, 'dönüş / sert yükseliş ihtimali']); cd.big = i; }
+        else if (R[i] >= 85 && b.c > b.o) { add(i, 'bear', ['Alım klimaksı (aşırı ısınma)', `RSI ${R[i].toFixed(0)}`, `hacim ×${volR.toFixed(1)}`, 'düzeltme riski']); cd.big = i; }
       }
     }
     return out;
@@ -321,7 +272,7 @@ SV.analysis = (() => {
   function evaluate(bars, ctx, sigs) {
     const A = ctx.atr, st = {}, B = baseline(bars, A), n = bars.length;
     for (const s of sigs) {
-      if (s.type === 'rev') continue;
+      if (s.type === 'rev' || s.type === 'orange') continue;
       const o = st[s.type] || (st[s.type] = { n: 0, win: 0, r: 0, base: 0, open: 0, unit: s.type === 'ltb' ? '%' : 'R' });
       let v, b;
       if (s.type === 'ltb') {

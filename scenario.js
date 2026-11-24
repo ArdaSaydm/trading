@@ -3,12 +3,12 @@ window.SV = window.SV || {};
 SV.scen = (() => {
   const STATS = {
     short: {
-      strong: { with: { n: 110, p50: 0.72, p100: 0.45, p200: 0.37, usd: 38, w7: 0.7, usd7: 32, tr: 0.74, te: 0.61 }, against: { n: 40, p50: 0.55, p100: 0.23, p200: 0.15, usd: 4, w7: 0.5, usd7: -2, tr: 0.54, te: 0.58 } },
-      base: { with: { n: 915, p50: 0.54, p100: 0.35, p200: 0.22, usd: 14, w7: 0.46, usd7: 9 }, against: { n: 724, p50: 0.47, p100: 0.24, p200: 0.09, usd: -3, w7: 0.42, usd7: -2 } }
+      strong: { with: { n: 117, p50: 0.66, p100: 0.38, p200: 0.32, usd: 28, w7: 0.59, usd7: 22, tr: 0.68, te: 0.63 }, against: { n: 88, p50: 0.36, p100: 0.27, p200: 0.17, usd: -4, w7: 0.33, usd7: -4, tr: 0.28, te: 0.61 } },
+      base: { with: { n: 598, p50: 0.56, p100: 0.36, p200: 0.21, usd: 16, w7: 0.49, usd7: 12 }, against: { n: 350, p50: 0.52, p100: 0.24, p200: 0.09, usd: 0, w7: 0.45, usd7: 1 } }
     },
     long: {
-      strong: { with: { n: 78, p50: 0.64, p100: 0.38, p200: 0.21, usd: 25, w7: 0.45, usd7: 15, tr: 0.69, te: 0.47 }, against: { n: 68, p50: 0.46, p100: 0.18, p200: 0.03, usd: -10, w7: 0.41, usd7: -9, tr: 0.52, te: 0.32 } },
-      base: { with: { n: 805, p50: 0.54, p100: 0.3, p200: 0.15, usd: 7, w7: 0.45, usd7: 3 }, against: { n: 1058, p50: 0.42, p100: 0.18, p200: 0.06, usd: -9, w7: 0.33, usd7: -11 } }
+      strong: { with: { n: 133, p50: 0.68, p100: 0.45, p200: 0.23, usd: 31, w7: 0.5, usd7: 15, tr: 0.72, te: 0.55 }, against: { n: 176, p50: 0.38, p100: 0.19, p200: 0.09, usd: -12, w7: 0.32, usd7: -13, tr: 0.4, te: 0.35 } },
+      base: { with: { n: 418, p50: 0.53, p100: 0.28, p200: 0.16, usd: 6, w7: 0.43, usd7: 3 }, against: { n: 593, p50: 0.46, p100: 0.2, p200: 0.09, usd: -3, w7: 0.35, usd7: -7 } }
     },
     rand50: 0.5,
     market: { early: { with: 0.6, against: 0.39 }, late: { with: 0.48, against: 0.4 }, flips: 3, old: 9 }
@@ -71,12 +71,8 @@ SV.scen = (() => {
   }
 
   function checks(dir, zone, close, s200, t) {
-    const below = s200 != null && (dir < 0 ? close < s200 : close > s200);
-    const list = [
-      { ok: zone.names.length >= 2, text: 'Bölgede en az 2 üst zaman dilimi kaynağı (trend, parabolik yay ya da seviye)' },
-      { ok: below, text: (dir < 0 ? 'Fiyat SMA200 altında' : 'Fiyat SMA200 üstünde') + (s200 == null ? ' (bu grafikte SMA200 için yeterli mum yok)' : '') }
-    ];
-    const strong = list.every(c => c.ok), rg = regime(t), aligned = !!rg && rg.dir === dir;
+    const list = [{ ok: zone.items.some(x => x.kind === 'trend'), text: 'Bölgede aylık ya da haftalık trend çizgisi (3 temaslı)' }];
+    const strong = list[0].ok, rg = regime(t), aligned = !!rg && rg.dir === dir;
     list.push({ ok: aligned, market: true, text: rg ? `Piyasa yönüyle aynı (BTC aylık: ${rg.dir > 0 ? 'boğa' : 'ayı'})` : 'Piyasa yönü bilinmiyor (BTC aylık veri yok)' });
     return { list, strong, aligned };
   }

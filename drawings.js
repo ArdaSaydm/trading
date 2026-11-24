@@ -207,10 +207,10 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
       }
     }
     if (S.layers.para && htf.arcs) {
-      const step = get().step, tEnd = bars[n - 1].t + Math.max(60 * step, 0);
+      const step = get().step, tEnd = bars[n - 1].t + 12 * step;
       for (const q of htf.arcs) {
         const f = t => Math.exp(q.c0 + q.c1 * (t - q.T0) / q.SC + q.c2 * ((t - q.T0) / q.SC) ** 2);
-        const ta = Math.max(q.t1, bars[0].t), tb = Math.max(tEnd, bars[n - 1].t + q.span * 0.15), col = '#e6c229';
+        const ta = Math.max(q.t1, bars[0].t), tb = Math.min(tEnd, bars[n - 1].t + q.span * 0.15), col = '#e6c229';
         g.strokeStyle = col; g.lineWidth = q.tf === '1M' ? 1.2 : 1; g.setLineDash([]); g.beginPath();
         let first = true;
         for (let k = 0; k <= 160; k++) {
@@ -263,10 +263,13 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         const tip = buy ? y + 5 : y - 5 - off, by = buy ? tip + 5 : tip - 5;
         g.font = `600 ${isZ ? 11 : 12}px "IBM Plex Sans", system-ui, sans-serif`;
         const label = buy ? 'Buy' : isZ ? 'Direnç' : 'Sell', w = g.measureText(label).width + 14, h = isZ ? 19 : 22;
-        g.fillStyle = buy ? '#16d94a' : isZ ? '#b71c1c' : '#f23645';
+        const col = buy ? '#16d94a' : isZ ? '#b71c1c' : '#f23645', hollow = s.mk < 0;
+        g.fillStyle = col;
         g.beginPath(); g.moveTo(x, tip); g.lineTo(x - 5, by); g.lineTo(x + 5, by); g.closePath(); g.fill();
-        roundRect(x - w / 2, buy ? by : by - h, w, h, 3); g.fill();
-        text(label, x, buy ? by + h / 2 : by - h / 2, buy ? '#05310f' : '#ffffff', 'center', 600, isZ ? 11 : 12);
+        roundRect(x - w / 2, buy ? by : by - h, w, h, 3);
+        if (hollow) { g.fillStyle = 'rgba(12,14,18,.88)'; g.fill(); g.strokeStyle = col; g.lineWidth = 1.5; g.stroke(); }
+        else g.fill();
+        text(label, x, buy ? by + h / 2 : by - h / 2, hollow ? col : buy ? '#05310f' : '#ffffff', 'center', 600, isZ ? 11 : 12);
       }
     }
     if (res && res.signals && S.layers.ltb) {
@@ -280,6 +283,23 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         g.beginPath(); g.moveTo(x, tip); g.lineTo(x - 5, by); g.lineTo(x + 5, by); g.closePath(); g.fill();
         roundRect(x - w / 2, by, w, h, 3); g.fill();
         text('P', x, by + h / 2, '#ffffff', 'center', 700, 13);
+      }
+    }
+    if (res && res.signals && S.layers.orange) {
+      for (const s of res.signals) {
+        if (s.type !== 'orange') continue;
+        const x = X(s.i);
+        if (x == null || x < -20 || x > W + 20) continue;
+        const up = s.dir > 0, y = Y(up ? bars[s.i].l : bars[s.i].h);
+        if (y == null) continue;
+        const has = t => res.signals.some(o => o.i === s.i && o.type === t);
+        const off = up ? (S.layers.bs && has('buy') ? 30 : 0) + (S.layers.ltb && has('ltb') ? 32 : 0) + (S.layers.react && res.signals.some(o => o.i === s.i && o.type === 'react' && o.dir > 0) ? 26 : 0)
+          : (S.layers.bs && has('sell') ? 30 : 0) + (S.layers.zone && has('zsell') ? 26 : 0) + (S.layers.react && res.signals.some(o => o.i === s.i && o.type === 'react' && o.dir < 0) ? 26 : 0);
+        const tip = up ? y + 5 + off : y - 5 - off, by = up ? tip + 6 : tip - 6, w = 20, h = 20;
+        g.fillStyle = '#ff9800';
+        g.beginPath(); g.moveTo(x, tip); g.lineTo(x - 6, by); g.lineTo(x + 6, by); g.closePath(); g.fill();
+        roundRect(x - w / 2, up ? by : by - h, w, h, 10); g.fill();
+        text(up ? '↑' : '↓', x, up ? by + h / 2 : by - h / 2, '#2b1700', 'center', 700, 13);
       }
     }
     if (res && res.signals && S.layers.react) {
@@ -331,9 +351,15 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
     const col = p.bull === true ? '#26a69a' : p.bull === false ? '#ef5350' : '#f5a623';
     const fill = p.bull === true ? 'rgba(38,166,154,.09)' : p.bull === false ? 'rgba(239,83,80,.09)' : 'rgba(245,166,35,.09)';
     const pt = q => [X(q.i), Y(q.p)];
+    const path = l => {
+      if (!l.lg) return [pt(l.a), pt(l.b)];
+      const out = [], N = 24, la = Math.log(l.a.p), lb = Math.log(l.b.p);
+      for (let k = 0; k <= N; k++) { const f = k / N; out.push(pt({ i: l.a.i + (l.b.i - l.a.i) * f, p: Math.exp(la + (lb - la) * f) })); }
+      return out;
+    };
     const top = p.lines.find(l => l.role === 'top'), bot = p.lines.find(l => l.role === 'bot');
     if (top && bot) {
-      const c = [pt(top.a), pt(top.b), pt(bot.b), pt(bot.a)];
+      const c = [...path(top), ...path(bot).reverse()];
       if (c.flat().every(v => v != null)) {
         g.fillStyle = fill; g.beginPath(); c.forEach(([x, y], k) => k ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill();
       }
@@ -344,9 +370,9 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
       if ([...a1, ...b1, ...a2].every(v => v != null)) { g.fillStyle = fill; g.fillRect(a1[0], Math.min(a1[1], a2[1]), b1[0] - a1[0], Math.abs(a2[1] - a1[1])); }
     }
     for (const l of p.lines) {
-      const [x1, y1] = pt(l.a), [x2, y2] = pt(l.b);
-      if ([x1, y1, x2, y2].some(v => v == null)) continue;
-      line(x1, y1, x2, y2, col, 1, l.role === 'neck' ? [5, 4] : []);
+      const q = path(l);
+      if (q.flat().some(v => v == null)) continue;
+      for (let k = 1; k < q.length; k++) line(q[k - 1][0], q[k - 1][1], q[k][0], q[k][1], col, 1, l.role === 'neck' ? [5, 4] : []);
     }
     if (p.type !== 'bflag' && p.type !== 'sflag' && !top) {
       g.strokeStyle = col; g.lineWidth = 1; g.setLineDash([]); g.beginPath();
@@ -358,7 +384,10 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
     const lx = X((p.start + p.last) / 2);
     if (lx != null && ys.length) label(`${p.name} · ${st}`, lx, Math.min(...ys) - 16, col);
     const o = p.outlook;
-    if (o && o.target != null && (p.status === 'forming' || p.status === 'confirmed' || get().patSel != null)) {
+    if (o && p.brk == null && o.pDir < 0.6 && (p.status === 'forming' || get().patSel != null)) {
+      const x = X(n - 1), y = Y(bars[n - 1].c);
+      if (x != null && y != null) tag(`Yön belirsiz · aşağı %${Math.round((o.dir < 0 ? o.pDir : 1 - o.pDir) * 100)} / yukarı %${Math.round((o.dir > 0 ? o.pDir : 1 - o.pDir) * 100)}`, x + 8, y - 22, '#7a5d00', '#ffffff', 'left');
+    } else if (o && o.target != null && (p.status === 'forming' || p.status === 'confirmed' || get().patSel != null)) {
       const from = p.brk ?? n - 1, x1 = X(from), x2 = X(from + 18), y1 = Y(bars[Math.min(from, n - 1)].c), y2 = Y(o.target);
       if ([x1, x2, y1, y2].every(v => v != null)) {
         const oc = o.dir > 0 ? '#26a69a' : '#ef5350';
@@ -366,7 +395,8 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         const ang = Math.atan2(y2 - y1, x2 - x1);
         g.fillStyle = oc; g.beginPath(); g.moveTo(x2, y2);
         g.lineTo(x2 - 8 * Math.cos(ang - 0.45), y2 - 8 * Math.sin(ang - 0.45)); g.lineTo(x2 - 8 * Math.cos(ang + 0.45), y2 - 8 * Math.sin(ang + 0.45)); g.closePath(); g.fill();
-        tag(`Hedef ${SV.fmt(o.target)} · olasılık %${Math.round(o.prob * 100)}`, x2 + 6, y2, oc, '#ffffff', 'left');
+        const lc = bars[n - 1].c, dp = SV.prec(lc);
+        tag(`Hedef ${o.target.toLocaleString('tr-TR', { minimumFractionDigits: dp, maximumFractionDigits: dp })} (${SV.pct((o.target - lc) / lc * 100)}) · olasılık %${Math.round(o.prob * 100)}`, x2 + 6, y2, oc, '#ffffff', 'left');
       }
     }
   }
