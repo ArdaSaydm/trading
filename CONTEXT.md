@@ -387,6 +387,8 @@ Kullanıcının kuralı (2026-11): geçerli bir yükselen trend için 1. dip, 2.
 - **Formasyon hedefi:** etikette fiyat grafiğin ondalığıyla ve yüzde değişimle yazılır (ör. "Hedef 893,84 (−%47)"; önceden "893,841" 893 bin gibi okunuyordu). Kırılmamış formasyonda yön olasılığı %60'ın altındaysa (ör. genişleyen formasyon %54/%46) hedef oku çizilmez, "Yön belirsiz · aşağı %54 / yukarı %46" yazar.
 - Bu değişiklikle senaryolardaki "güçlü kurulum" tanımı yeniden test edildi: "bölgede trend/parabolik şartı" yeni çizgilerle küçük örnekte oynak çıktığı için kaldırıldı; güçlü = bölgede en az 2 kaynak + SMA200 lehte (en başından beri istikrarlı çıkan kural).
 
+- **24 Kasım 2026:** Grafikte fiyata uzak (aylık %30, haftalık %15, günlük %8) trendler gizlenir; ama son teması yakın zamanda olan trend (aylık 6, haftalık 13, günlük 45 mum) %60 uzaklığa kadar gösterilir (`htfTrends` 6. parametre `recent`, sadece `app.js`'te). Örnek: BTC günlük düşen trend 116.400 (27 Eki 2025) → 87.396 (21 Eyl 2026) → 84.898 (21 Eki 2026), sert düşüşten sonra fiyatın %33 üstünde kaldığı için gizleniyordu. `zones.js` eskisi gibi (recent = 0).
+
 ### Formasyonlar (`patterns.js`)
 
 - Pivotlar sırayla tepe-dip olacak şekilde düzenlenir. Art arda iki tepe gelirse yüksek olan, iki dip gelirse düşük olan tutulur.

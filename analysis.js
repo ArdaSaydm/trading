@@ -45,7 +45,7 @@ SV.analysis = (() => {
     return [...up.slice(0, nu), ...dn.slice(0, S.levels - Math.min(nu, up.length))].sort((a, b) => b.price - a.price);
   }
 
-  function htfTrends(bars, L, maxDist, nowT, lastPrice) {
+  function htfTrends(bars, L, maxDist, nowT, lastPrice, recent = 0) {
     const n = bars.length;
     if (n < L * 6 + 6) return [];
     const A = atr(bars), piv = pivots(bars, L);
@@ -71,7 +71,9 @@ SV.analysis = (() => {
           }
           if (!ok) continue;
           const now = at(nowT);
-          if (!(now > 0) || Math.abs(now - lastPrice) / lastPrice > maxDist) continue;
+          if (!(now > 0)) continue;
+          const far = Math.abs(now - lastPrice) / lastPrice;
+          if (far > maxDist && (!recent || far > 0.6)) continue;
           const pts = [];
           for (const x of P) {
             if (x.i < pa.i) continue;
@@ -83,6 +85,7 @@ SV.analysis = (() => {
           }
           if (pts.length < 3) continue;
           const last = pts[pts.length - 1].i;
+          if (far > maxDist && last < n - recent) continue;
           const score = pts.length * 2 + (last - pa.i) / n + last / n - (log ? 0.01 : 0);
           if (!best || score > best.score) best = { dir, log, t1: ta, t2: bars[last].t, y1: ya, m, touches: pts.length, pts: pts.map(x => ({ t: bars[x.i].t, p: x.p })), score, now, at };
         }

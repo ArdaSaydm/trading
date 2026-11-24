@@ -301,7 +301,7 @@ function computeHtf() {
   const last = bars[bars.length - 1], now = last.t + STEP[S.interval];
   htf = {};
   const closedH = k => { const H = htfRaw[k]; return H && H.length > 1 && H[H.length - 1].t + STEP[k] > Date.now() / 1000 ? H.slice(0, -1) : H; };
-  for (const [k, L, dist] of HTF) if (htfRaw[k]) htf[k] = SV.analysis.htfTrends(closedH(k), L, dist, now, last.c);
+  for (const [k, L, dist] of HTF) if (htfRaw[k]) htf[k] = SV.analysis.htfTrends(closedH(k), L, dist, now, last.c, { '1M': 6, '1w': 13, '1d': 45 }[k]);
   htf.arcs = [];
   for (const [k, L, dist] of [['1M', 2, 0.35], ['1w', 3, 0.25]]) {
     if (htfRaw[k]) for (const a of SV.analysis.arcs(closedH(k), L, dist, now, last.c)) htf.arcs.push({ ...a, tf: k });

@@ -65,9 +65,22 @@ function prep(b) {
 const crossUp = (P, k, i) => P[k][i - 1] != null && P.c[i] > P[k][i] && P.c[i - 1] <= P[k][i - 1];
 const crossDn = (P, k, i) => P[k][i - 1] != null && P.c[i] < P[k][i] && P.c[i - 1] >= P[k][i - 1];
 
+const wasRsi = (P, i, thr, look) => {
+  for (let k = i - 1; k >= Math.max(1, i - look); k--) if (P.rsiD[k] != null && P.rsiD[k] <= thr) return true;
+  return false;
+};
+const brkHi = (P, i, n) => {
+  if (i < n + 1) return false;
+  let hh = -Infinity;
+  for (let k = i - n; k < i; k++) if (P.b[k].h > hh) hh = P.b[k].h;
+  return P.c[i] > hh;
+};
 const RULES = {
   'Turuncu alt (uygulamadaki)': [1, (P, i) => P.dsl[i] <= 30 && P.dd[i] <= -0.4 && crossUp(P, 's10', i)],
-  'Turuncu üst (uygulamadaki)': [-1, (P, i) => P.ru[i] >= 0.5 && crossDn(P, 's50', i)]
+  'Turuncu üst (uygulamadaki)': [-1, (P, i) => P.ru[i] >= 0.5 && crossDn(P, 's50', i)],
+  'Öneri alt: RSI yıkama': [1, (P, i) => P.dd[i] <= -0.4 && wasRsi(P, i, 25, 15) && crossUp(P, 's10', i)],
+  'Öneri alt: RSI yıkama, BTC 200 altında': [1, (P, i) => P.btcBlw && P.btcBlw[i] && P.dd[i] <= -0.4 && wasRsi(P, i, 25, 15) && crossUp(P, 's10', i)],
+  'Öneri alt: 5 günlük kırılım': [1, (P, i) => P.dsl[i] <= 10 && brkHi(P, i, 5)]
 };
 
 function evaluate(PP, dir, f, from) {
@@ -100,6 +113,18 @@ function evaluate(PP, dir, f, from) {
 (async () => {
   const all = {};
   for (const s of COINS) { const b = await get(s); if (b.length > 500) all[s] = prep(b); }
+  const btc = all.BTCUSDT;
+  if (btc) {
+    const map = new Map();
+    for (let i = 0; i < btc.n; i++) map.set(Math.floor(btc.b[i].t / 86400), i);
+    for (const P of Object.values(all)) {
+      P.btcBlw = [];
+      for (let i = 0; i < P.n; i++) {
+        const bi = map.get(Math.floor(P.b[i].t / 86400));
+        P.btcBlw[i] = bi != null && btc.s200[bi] != null && btc.c[bi] < btc.s200[bi];
+      }
+    }
+  }
   const A = Object.values(all), M = MAJ.filter(s => all[s]).map(s => all[s]);
   for (const [name, [dir, f]] of Object.entries(RULES)) {
     console.log(`\n${name}`);
