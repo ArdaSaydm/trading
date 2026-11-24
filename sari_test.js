@@ -164,4 +164,68 @@ function evaluate(U, dir, f) {
   console.log(`${Object.keys(U).length} piyasa`);
   attachBreadth(U);
   for (const [name, [dir, f]] of Object.entries(RULES)) console.log(`\n${name}\n${evaluate(U, dir, f)}`);
+  console.log('\n' + cover(U));
 })();
+
+function cover(U) {
+  const FLOOR = Math.log(1.2);
+  const g = {};
+  const add = (k, fn) => { const o = g[k] || (g[k] = { T: 0, hit: 0, ev: 0, ok: 0, delay: [], r: [], rm: [], br: [] }); fn(o); };
+  for (const s in U) {
+    const P = U[s], n = P.n, lc = P.lc, conf = [];
+    let dir = 0, ext = 0, ei = 0; const done = new Set();
+    for (let i = WARM; i < n; i++) {
+      const x = lc[i];
+      if (dir === 0) {
+        let mx = -Infinity, mn = Infinity;
+        for (let j = 52; j <= i; j++) { mx = Math.max(mx, lc[j]); mn = Math.min(mn, lc[j]); }
+        if (x - mn >= FLOOR) { dir = 1; ext = x; ei = i; } else if (mx - x >= FLOOR) { dir = -1; ext = x; ei = i; }
+        continue;
+      }
+      if (dir > 0) {
+        if (x > ext) { ext = x; ei = i; }
+        else if (ext - x >= FLOOR && !done.has(ei)) { done.add(ei); conf.push({ i, ei, dir: -1 }); }
+        if (ext - x >= FLOOR) { dir = -1; ext = x; ei = i; }
+      } else {
+        if (x < ext) { ext = x; ei = i; }
+        else if (x - ext >= FLOOR && !done.has(ei)) { done.add(ei); conf.push({ i, ei, dir: 1 }); }
+        if (x - ext >= FLOOR) { dir = 1; ext = x; ei = i; }
+      }
+    }
+    const turns = P.T.filter(t => t.i >= WARM);
+    for (const t of turns) {
+      const c = conf.find(q => q.dir === t.dir && q.ei === t.i && q.i >= t.i - 1);
+      const era = P.w[t.i].t < CUT ? '2010 öncesi' : '2010 sonrası';
+      for (const k of ['TÜMÜ', era, P.cls]) add(k, o => { o.T++; if (c) { o.hit++; o.delay.push(c.i - t.i); } });
+    }
+    for (const c of conf) {
+      const matched = turns.some(t => t.dir === c.dir && t.i === c.ei);
+      const era = P.w[c.i].t < CUT ? '2010 öncesi' : '2010 sonrası';
+      const side = c.dir > 0 ? '▲ ' : '▼ ';
+      const ret = c.i + H < n ? c.dir * (lc[c.i + H] - lc[c.i]) : null;
+      for (const k of [side + 'TÜMÜ', side + era, side + P.cls]) add(k, o => { o.ev++; if (matched) o.ok++; if (ret != null) { o.r.push(ret); if (matched) o.rm.push(ret); } });
+    }
+    for (let i = WARM; i + H < n; i++) if (i % 4 === 0) {
+      const era = P.w[i].t < CUT ? '2010 öncesi' : '2010 sonrası';
+      for (const d of [1, -1]) {
+        const side = d > 0 ? '▲ ' : '▼ ';
+        const ret = d * (lc[i + H] - lc[i]);
+        for (const k of [side + 'TÜMÜ', side + era, side + P.cls]) add(k, o => o.br.push(ret));
+      }
+    }
+  }
+  const med = a => { if (!a.length) return NaN; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+  const pc = x => Number.isFinite(x) ? (x >= 0 ? '+' : '') + Math.round((Math.exp(x) - 1) * 100) + '%' : 'na';
+  const rows = [];
+  rows.push('%20 zigzag — üçgen ekstrem haftaya, fiyat %20 dönünce');
+  for (const k of ['TÜMÜ', '2010 öncesi', '2010 sonrası', 'endeks', 'hisse', 'emtia', 'kripto', 'döviz']) {
+    const o = g[k]; if (!o || !o.T) continue;
+    const d = med(o.delay);
+    rows.push(`  ${k.padEnd(12)} eşleşme ${o.hit}/${o.T}=%${Math.round(o.hit / o.T * 100)} gecikme ${Number.isFinite(d) ? Math.round(d) : '-'}hf`);
+  }
+  for (const k of ['▲ TÜMÜ', '▲ 2010 öncesi', '▲ 2010 sonrası', '▲ endeks', '▲ hisse', '▲ emtia', '▲ kripto', '▼ TÜMÜ', '▼ 2010 öncesi', '▼ 2010 sonrası', '▼ endeks', '▼ hisse', '▼ emtia', '▼ kripto']) {
+    const o = g[k]; if (!o || !o.ev) continue;
+    rows.push(`  ${k.padEnd(16)} uzun vade payı %${Math.round(o.ok / o.ev * 100)} (${o.ok}/${o.ev}) · 26h ${pc(med(o.r))}/${pc(med(o.br))} · yalnız eşleşen ${pc(med(o.rm))}`);
+  }
+  return rows.join('\n');
+}

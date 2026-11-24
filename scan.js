@@ -37,8 +37,13 @@ SV.scan = (() => {
     const ctx = SV.analysis.indicators(bars), n = bars.length;
     const closedN = Date.now() / 1000 < bars[n - 1].t + STEP[tf] ? n - 1 : n;
     const L = SV.scen.live(bars, ctx, H, closedN, 'scan' + f.m + f.s, tf);
-    if (!L) return [];
     const out = [];
+    const { patterns } = SV.patterns.detect(bars, ctx, { pivot: 5 });
+    for (const x of SV.scen.patLive(patterns, bars, ctx, closedN, tf)) {
+      if (!['triggered', 'near', 'trying'].includes(x.state)) continue;
+      out.push({ f, tf, key: x.dir < 0 ? 'short' : 'long', sc: x, pat: true, price: bars[n - 1].c, t: null });
+    }
+    if (!L) return out;
     for (const key of ['short', 'long']) {
       const sc = L[key];
       if (!sc || !sc.plan || !['triggered', 'near', 'inzone'].includes(sc.state)) continue;
@@ -55,15 +60,18 @@ SV.scan = (() => {
     for (const f of list) for (const tf of TFS) {
       try { found.push(...await one(f, tf)); } catch (e) { fails++; }
     }
-    const rank = r => (r.sc.state === 'triggered' ? 0 : r.sc.state === 'inzone' ? 1 : 2) + (SV.scen.good(r.sc) ? 0 : r.sc.strong ? 3 : 6);
-    rows = found.sort((a, b) => rank(a) - rank(b) || a.sc.distP - b.sc.distP);
+    const rank = r => (r.sc.state === 'triggered' ? 0 : r.sc.state === 'inzone' || r.sc.state === 'trying' ? 1 : 2) + (r.pat ? (patStrong(r.sc) ? 0 : 3) : SV.scen.good(r.sc) ? 0 : r.sc.strong ? 3 : 6);
+    rows = found.sort((a, b) => rank(a) - rank(b) || SV.scen.score(b.sc.stats) - SV.scen.score(a.sc.stats) || (a.sc.distP || 0) - (b.sc.distP || 0));
     err = fails; at = Date.now(); busy = false;
     render();
     alerts(cur);
   }
 
+  const patStrong = sc => sc.stats.p50 >= 0.6 && sc.stats.n >= 100;
+
   function alerts(cur) {
     for (const r of rows) {
+      if (r.pat) continue;
       const sh = r.key === 'short', p = r.sc.plan, name = `${r.f.s.replace(/USDT$/, '')} ${TFN[r.tf]}`;
       const same = r.f.s === cur.symbol && r.f.m === cur.market && r.tf === cur.interval;
       if (same) continue;
@@ -78,6 +86,7 @@ SV.scan = (() => {
   }
 
   function stateTxt(sc) {
+    if (sc.state === 'trying') return 'kırılıyor, kapanış bekleniyor';
     if (sc.state === 'triggered') return sc.ago ? `giriş oluştu · ${sc.ago} mum önce` : 'giriş oluştu';
     if (sc.state === 'inzone') return 'bölgede, kapanış bekleniyor';
     return `yaklaşıyor · ${SV.pct(sc.distP * 100).replace('+', '')}`;
@@ -89,14 +98,14 @@ SV.scan = (() => {
     const note = $('scanNote');
     note.textContent = at ? `${SV.favs.list().length} favori · 4s ve 1G · son tarama ${new Date(at).toLocaleTimeString('tr-TR')}${err ? ` · ${err} istek başarısız` : ''}` : 'Taranıyor…';
     if (!at) { box.innerHTML = ''; return; }
-    const show = rows.filter(r => r.sc.strong), weak = rows.length - show.length;
+    const show = rows.filter(r => r.pat || r.sc.strong), weak = rows.length - show.length;
     box.innerHTML = (show.length ? show.map(r => {
       const k = rows.indexOf(r);
-      const sh = r.key === 'short', g = SV.scen.good(r.sc);
-      return `<li><button data-k="${k}" class="${r.sc.state === 'triggered' && g ? 'hot' : ''}">
+      const sh = r.key === 'short', g = !r.pat && SV.scen.good(r.sc);
+      return `<li><button data-k="${k}" class="${r.sc.state === 'triggered' && (g || (r.pat && patStrong(r.sc))) ? 'hot' : ''}">
         <span class="tag ${sh ? 'sell' : 'buy'}">${sh ? 'Short' : 'Long'}</span>
         <b>${r.f.s.replace(/USDT$/, '')} ${TFN[r.tf]}</b>
-        <span class="why">${stateTxt(r.sc)} · ${g ? 'iyi kurulum' : r.sc.aligned ? (r.sc.stats.n < 60 ? 'güçlü, örnek az' : 'güçlü, doğrulamada zayıf') : 'güçlü, piyasa yönüne ters'} · +50 $ %${Math.round(r.sc.stats.p50 * 100)}</span>
+        <span class="why">${r.pat ? `${stateTxt(r.sc)} · ${r.sc.name} · ${patStrong(r.sc) ? 'güçlü' : 'orta'}` : `${stateTxt(r.sc)} · ${g ? 'iyi kurulum' : r.sc.aligned ? (r.sc.stats.n < 60 ? 'güçlü, örnek az' : 'güçlü, doğrulamada zayıf') : 'güçlü, piyasa yönüne ters'}`} · +50 $ %${Math.round(r.sc.stats.p50 * 100)}</span>
       </button></li>`;
     }).join('') : '<li class="empty">Şu an favorilerde güçlü kurulum yok.</li>') + (weak ? `<li class="empty">${weak} zayıf kurulum (koşulların hepsi tutmayan) listelenmedi.</li>` : '');
   }

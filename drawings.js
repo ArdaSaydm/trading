@@ -318,6 +318,21 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         else { g.fillStyle = 'rgba(12,14,18,.75)'; g.strokeStyle = '#f5c518'; g.lineWidth = 2; g.fill(); g.stroke(); }
       }
     }
+    if (res && res.signals && S.layers.zz) {
+      for (const s of res.signals) {
+        if (s.type !== 'zz') continue;
+        const bi = s.at != null ? s.at : s.i, x = X(bi);
+        if (x == null || x < -20 || x > W + 20) continue;
+        const up = s.dir > 0, y = Y(up ? bars[bi].l : bars[bi].h);
+        if (y == null) continue;
+        const at = (t, d) => res.signals.some(o => (t === 'tric' ? (o.at ?? o.i) : o.i) === bi && o.type === t && (d == null || o.dir === d));
+        const off = up ? (S.layers.bs && at('buy') ? 30 : 0) + (S.layers.ltb && at('ltb') ? 32 : 0) + (S.layers.react && at('react', 1) ? 26 : 0) + (S.layers.orange && at('orange', 1) ? 32 : 0) + (S.layers.tri && (at('tric', 1) || at('tri', 1)) ? 20 : 0)
+          : (S.layers.bs && at('sell') ? 30 : 0) + (S.layers.zone && at('zsell') ? 26 : 0) + (S.layers.react && at('react', -1) ? 26 : 0) + (S.layers.orange && at('orange', -1) ? 32 : 0) + (S.layers.tri && (at('tric', -1) || at('tri', -1)) ? 20 : 0);
+        const cy = up ? y + 12 + off : y - 12 - off;
+        g.beginPath(); g.arc(x, cy, 6.5, 0, Math.PI * 2);
+        g.fillStyle = '#ff9800'; g.fill(); g.strokeStyle = 'rgba(43,23,0,.85)'; g.lineWidth = 1.5; g.stroke();
+      }
+    }
     if (res && res.signals && S.layers.react) {
       for (const s of res.signals) {
         if (s.type !== 'react') continue;

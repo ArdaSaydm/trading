@@ -164,7 +164,49 @@ SV.scen = (() => {
     return out;
   }
 
+  const PST = {
+    fwedgeL: { n: 190, p50: 0.64, p100: 0.33, p200: 0.21, usd: 18, a: 0.57, b: 0.7, h4: 0.61, d1: 0.7 },
+    fchanL: { n: 123, p50: 0.62, p100: 0.35, p200: 0.22, usd: 19, a: 0.69, b: 0.56, h4: 0.63, d1: 0.58 },
+    descL: { n: 40, p50: 0.65, p100: 0.42, p200: 0.23, usd: 23, a: 0.77, b: 0.59, h4: 0.63, d1: 0.69 },
+    rwedgeS: { n: 121, p50: 0.61, p100: 0.3, p200: 0.19, usd: 15, a: 0.54, b: 0.67, h4: 0.58, d1: 0.69 },
+    rchanS: { n: 116, p50: 0.59, p100: 0.26, p200: 0.09, usd: 5, a: 0.63, b: 0.53, h4: 0.59, d1: 0.57 },
+    fwedgeS: { n: 40, p50: 0.6, p100: 0.3, p200: 0.1, usd: 7, a: 0.53, b: 0.65, h4: 0.63, d1: 0.5 },
+    ascS: { n: 32, p50: 0.66, p100: 0.38, p200: 0.28, usd: 27, a: 0.63, b: 0.69, h4: 0.63, d1: 0.69 }
+  };
+  const PAT_TF = ['4h', '1d'], PAT_RAND = 0.49, PAT_ALL = 0.51;
+  const score = st => st ? (st.p50 * st.n + 0.5 * 50) / (st.n + 50) : -1;
+  const lineAt = (l, j) => l.lg ? Math.exp(Math.log(l.a.p) + (Math.log(l.b.p) - Math.log(l.a.p)) * (j - l.a.i) / ((l.b.i - l.a.i) || 1)) : l.a.p + (l.b.p - l.a.p) * (j - l.a.i) / ((l.b.i - l.a.i) || 1);
+
+  function patLive(list, bars, ctx, closedN, interval) {
+    if (!PAT_TF.includes(interval) || !list) return [];
+    const n = bars.length, c = closedN - 1, a = ctx.atr[c], price = bars[n - 1].c, out = [];
+    if (!a) return out;
+    for (const p of list) {
+      for (const dir of [1, -1]) {
+        const st = PST[p.type + (dir > 0 ? 'L' : 'S')];
+        if (!st) continue;
+        const line = p.lines.find(l => l.role === (dir > 0 ? 'top' : 'bot'));
+        if (!line) continue;
+        const base = { kind: 'pat', type: p.type, name: p.name, dir, stats: st, score: score(st), tested: true, aligned: (() => { const rg = regime(bars[n - 1].t); return rg ? rg.dir === dir : null; })() };
+        if (p.brk != null) {
+          if ((p.bull ? 1 : -1) !== dir) continue;
+          if (p.brk > c) { const lv = lineAt(line, p.brk) + dir * 0.25 * a; out.push({ ...base, state: 'trying', level: lv, plan: plan(dir, price) }); continue; }
+          const ago = c - p.brk;
+          if (ago > 5) continue;
+          const ev = { i: p.brk, plan: plan(dir, bars[p.brk].c) }, f = follow(bars, ev, n - 1);
+          out.push({ ...base, state: f.done ? f.k : 'triggered', tier: f.tier, ago, level: lineAt(line, p.brk) + dir * 0.25 * a, plan: ev.plan });
+          continue;
+        }
+        if (p.status !== 'forming' || !p.active) continue;
+        const lv = lineAt(line, n - 1) + dir * 0.25 * a, distA = dir * (lv - price) / a, distP = Math.abs(lv - price) / price;
+        if (distA < 0) { out.push({ ...base, state: 'trying', level: lv, plan: plan(dir, price) }); continue; }
+        out.push({ ...base, state: distA <= 1.5 ? 'near' : 'wait', distA, distP, level: lv, plan: plan(dir, lv) });
+      }
+    }
+    return out.sort((x, y) => y.score - x.score);
+  }
+
   const good = s => !!s && s.tested && s.strong && s.aligned && s.stats.p50 >= MIN_WIN && s.stats.n >= 60 && (s.stats.tr == null || (s.stats.tr >= MIN_WIN && s.stats.te >= MIN_WIN));
 
-  return { STATS, MIN_WIN, LV, STOP, TESTED, zonesAt, live, history, good, regime, setMarket };
+  return { STATS, MIN_WIN, LV, STOP, TESTED, PST, PAT_TF, PAT_RAND, PAT_ALL, score, zonesAt, live, history, good, regime, setMarket, patLive };
 })();

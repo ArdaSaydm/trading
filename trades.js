@@ -13,6 +13,7 @@ SV.trades = (() => {
 
   function mapCoin(coin) {
     if (XYZ[coin]) return { symbol: XYZ[coin], market: 'futures' };
+    if (/^xyz:[A-Z0-9]+$/.test(coin)) return { symbol: coin.slice(4) + 'USDT', market: 'futures' };
     if (coin.includes(':') || coin.startsWith('@')) return null;
     if (/^k[A-Z]/.test(coin)) return { symbol: '1000' + coin.slice(1) + 'USDT', market: 'futures' };
     return { symbol: coin + 'USDT', market: 'futures' };
@@ -175,8 +176,8 @@ SV.trades = (() => {
       const mid = +hl.mids[o.coin] || null, val = o.sz * (o.limit || o.px);
       if (!o.reduce) tot += val;
       const dist = mid ? (o.px - mid) / mid * 100 : null;
-      return `<tr>
-        <td><button class="lnk" data-ogo="${esc(o.coin)}" ${o.symbol ? '' : 'disabled'}>${esc(o.coin)}</button></td>
+      return `<tr${o.symbol ? ` class="oclick" data-ogo="${esc(o.coin)}" tabindex="0" title="Grafiği aç"` : ''}>
+        <td><span class="lnk">${esc(o.coin)}</span></td>
         <td><span class="tag ${o.buy ? 'buy' : 'sell'}">${o.buy ? 'Alış' : 'Satış'}</span></td>
         <td>${esc(TYPE[o.type] || o.type)}${o.tpsl ? ' <small>poz. TP/SL</small>' : ''}${o.reduce ? ' <small>sadece azalt</small>' : ''}</td>
         <td class="num">${SV.fmt(o.px)}${o.trigger && o.limit && Math.abs(o.limit - o.trigger) > 1e-12 ? `<small>limit ${SV.fmt(o.limit)}</small>` : ''}</td>
@@ -391,7 +392,8 @@ SV.trades = (() => {
     if (!D) return;
     const cur = D.cur(), on = D.layer();
     const mine = on ? all().filter(p => p.symbol === cur.symbol && !p.done && p.qty > 0) : [];
-    const key = JSON.stringify(mine.map(p => [p.id, p.entry, p.qty, p.side, p.liq, Math.round(stats(p).be * 1e6)])) + JSON.stringify(hl.orders.filter(o => mine.some(p => p.coin === o.coin)));
+    const ords = on ? (hl.open || []).filter(o => o.symbol === cur.symbol) : [];
+    const key = JSON.stringify(mine.map(p => [p.id, p.entry, p.qty, p.side, p.liq, Math.round(stats(p).be * 1e6)])) + JSON.stringify(ords.map(o => [o.oid, o.px, o.sz]));
     if (key !== linesKey) {
       lines.forEach(l => D.candle.removePriceLine(l.pl));
       lines = [];
@@ -401,12 +403,15 @@ SV.trades = (() => {
         lines.push({ p, role: 'entry', pl: D.candle.createPriceLine({ price: p.entry, color: col, lineWidth: 1, lineStyle: 0, axisLabelVisible: true, title: '' }) });
         if (s.be != null && isFinite(s.be)) lines.push({ p, role: 'be', pl: D.candle.createPriceLine({ price: s.be, color: '#e6c229', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'Başabaş' }) });
         if (s.liq) lines.push({ p, role: 'liq', pl: D.candle.createPriceLine({ price: s.liq, color: '#ff1744', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: (p.src === 'Hyperliquid' ? '' : '~') + 'Likidasyon' }) });
-        for (const o of hl.orders.filter(o => o.coin === p.coin)) {
-          lines.push({ p, role: 'ord', pl: D.candle.createPriceLine({ price: o.px, color: o.kind === 'TP' ? '#26a69a' : '#ef5350', lineWidth: 1, lineStyle: 3, axisLabelVisible: true, title: o.kind }) });
-        }
+      }
+      const KIND = { Limit: 'Limit', 'Stop Market': 'Stop', 'Stop Limit': 'Stop limit', 'Take Profit Market': 'TP', 'Take Profit Limit': 'TP limit' };
+      for (const o of ords) {
+        const k = KIND[o.type] || o.type, val = o.sz * (o.limit || o.px);
+        lines.push({ role: 'ord', pl: D.candle.createPriceLine({ price: o.px, color: o.buy ? '#26a69a' : '#ef5350', lineWidth: 1, lineStyle: o.trigger ? 3 : 2, axisLabelVisible: true, title: `HL ${o.buy ? 'Alış' : 'Satış'} ${k} ${qtyTxt(o.sz)} · ${Math.round(val).toLocaleString('tr-TR')} $` }) });
       }
     }
     for (const l of lines) {
+      if (!l.p) continue;
       const s = stats(l.p);
       if (l.role === 'be') { l.pl.applyOptions({ title: `Başabaş${l.p.src === 'Hyperliquid' ? ' (HL)' : ''}${s.beDist != null ? ' · ' + num(s.beDist) + '%' : ''}` }); continue; }
       if (l.role !== 'entry') continue;
@@ -515,6 +520,7 @@ SV.trades = (() => {
     tabNow = SV.store.get('seviye.islemSekme', 'pos');
     setTab(['pos', 'ord', 'hist', 'ana', 'kur', 'not'].includes(tabNow) ? tabNow : 'pos', true);
     $('ordView').addEventListener('click', e => { const b = e.target.closest('[data-ogo]'); if (!b) return; const m = mapCoin(b.dataset.ogo); if (m) D.goTo(m.market, m.symbol); });
+    $('ordView').addEventListener('keydown', e => { if (e.key !== 'Enter') return; const b = e.target.closest('[data-ogo]'); if (!b) return; const m = mapCoin(b.dataset.ogo); if (m) D.goTo(m.market, m.symbol); });
     if (hl.address) { SV.history.setAddress(hl.address); refreshHL(); hlTimer = setInterval(refreshHL, 8000); }
     refreshTickers(); tkTimer = setInterval(refreshTickers, 10000);
     render();

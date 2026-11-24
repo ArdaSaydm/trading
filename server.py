@@ -1,13 +1,12 @@
 import json
 import os
-import re
 import sqlite3
 import sys
 import threading
 import urllib.request
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import unquote
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(ROOT, "seviye.db")
@@ -54,29 +53,9 @@ class Handler(SimpleHTTPRequestHandler):
                 rows = con.execute("SELECT key, value FROM state").fetchall()
             self.send_json(200, {k: json.loads(v) for k, v in rows})
             return
-        if self.path.split("?")[0] == "/api/quote":
-            self.quote()
-            return
         if self.path in ("/", ""):
             self.path = "/seviye.html"
         super().do_GET()
-
-    def quote(self):
-        q = parse_qs(urlparse(self.path).query)
-        sym = (q.get("s") or [""])[0]
-        if not re.fullmatch(r"[A-Za-z0-9^.=\-]{1,15}", sym):
-            self.send_json(400, {"error": "bad symbol"})
-            return
-        url = "https://query1.finance.yahoo.com/v8/finance/chart/" + quote(sym, safe="") + "?range=5d&interval=1d"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        try:
-            with urllib.request.urlopen(req, timeout=10) as r:
-                meta = json.loads(r.read())["chart"]["result"][0]["meta"]
-            self.send_json(200, {"last": meta.get("regularMarketPrice"), "prev": meta.get("chartPreviousClose") or meta.get("previousClose")})
-        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-            return
-        except Exception as e:
-            self.send_json(502, {"error": str(e)})
 
     def do_POST(self):
         if self.path != "/api/hl":

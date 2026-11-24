@@ -12,7 +12,7 @@ const TZ = -new Date().getTimezoneOffset() * 60;
 const DEF = {
   market: 'spot', symbol: 'BTCUSDT', interval: '4h', pivot: 5, levels: 5, tol: 0.6, sens: 4, cool: 20, ext: 20, depth: 3000, layersOpen: true, log: false, opacity: 0.5, notify: false, volH: 0.18,
   account: 1000, riskPct: 1, view: 'chart', dom: 'CRYPTOCAP:BTC.D',
-  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, orange: true, tri: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
+  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, orange: true, tri: true, zz: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
 };
 const S = JSON.parse(JSON.stringify(DEF));
 {
@@ -22,7 +22,7 @@ const S = JSON.parse(JSON.stringify(DEF));
 const save = () => SV.store.set('seviye', S);
 if (!('layersOpen' in SV.store.get('seviye', {})) && innerWidth < 700) S.layersOpen = false;
 const LAYERS = [
-  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'], ['orange', 'Turuncu (büyük dönüş)', 'orange'], ['tri', 'Sarı üçgen (piyasa dönüşü)', 'tri'],
+  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'], ['orange', 'Turuncu (büyük dönüş)', 'orange'], ['tri', 'Sarı üçgen (piyasa dönüşü)', 'tri'], ['zz', 'Turuncu yuvarlak (%20 dönüş)', 'zz'],
   ['pat', 'Formasyonlar', 'pat'], ['para', 'Parabolik yay', 'para'], ['htf1M', 'Aylık trend', 'tr w3'], ['htf1w', 'Haftalık trend', 'tr w2'],
   ['htf1d', 'Günlük trend', 'tr'], ['levels', 'Destek / direnç', 'lv'], ['sma', 'SMA 50 / 200', 'sma'], ['vol', 'Hacim', 'volb'], ['pos', 'İşlemlerim', 'pos'], ['hist', 'Geçmiş işlemlerim', 'hist']
 ];
@@ -30,7 +30,7 @@ const EYE_ON = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6
 const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 
 let bars = [], res = null, priceLines = [], ws = null, wsToken = 0, retry = 0, reTimer = null, anTimer = null, C = {};
-let lastMsg = 0, sigByIndex = new Map(), htf = {}, htfRaw = {}, htfKey = '', htfAt = 0, patSel = null;
+let lastMsg = 0, sigByIndex = new Map(), htf = {}, htfRaw = {}, htfKey = '', htfAt = 0, patSel = null, zzNow = null;
 const HTF = [['1M', 2, 0.30], ['1w', 3, 0.15], ['1d', 5, 0.08]];
 
 function showMsg(h, p) { $('msgH').textContent = h; $('msgP').textContent = p || ''; $('msg').classList.add('show'); }
@@ -80,7 +80,7 @@ const overlay = SV.overlay({
 function theme() {
   C = colors();
   chart.applyOptions({
-    layout: { background: { type: 'solid', color: C.bg }, textColor: C.muted, fontFamily: '"IBM Plex Sans", system-ui, sans-serif', attributionLogo: false },
+    layout: { background: { type: 'solid', color: C.bg }, textColor: C.muted, fontFamily: '"IBM Plex Sans", system-ui, sans-serif', attributionLogo: true },
     grid: { vertLines: { color: C.line }, horzLines: { color: C.line } },
     rightPriceScale: { borderColor: C.line },
     timeScale: { borderColor: C.line }
@@ -343,6 +343,32 @@ function computeHtf() {
     renderSignals();
     renderStats();
   }
+  if (res && res.ctx && htfRaw['1w']) {
+    const w = closedH('1w'), Z = SV.zz.detect(w), step = STEP[S.interval], add = [], seen = new Set();
+    const at = target => { let lo = 0, hi = bars.length - 1, i = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (bars[m].t <= target) { i = m; lo = m + 1; } else hi = m - 1; } return i < 0 || target >= bars[i].t + step ? -1 : i; };
+    const ext = (t0, dir) => {
+      if (step >= 604800) return at(t0);
+      let best = -1;
+      for (let k = Math.max(0, at(t0) - 1); k < bars.length && bars[k].t < t0 + 604800; k++) {
+        if (bars[k].t < t0) continue;
+        if (best < 0 || (dir > 0 ? bars[k].l < bars[best].l : bars[k].h > bars[best].h)) best = k;
+      }
+      return best;
+    };
+    for (const o of Z.list) {
+      const i = at(step >= 604800 ? o.t : o.t + 604800 - step);
+      if (i < 0 || seen.has(i + ':' + o.dir)) continue;
+      seen.add(i + ':' + o.dir);
+      const x = ext(o.tr, o.dir);
+      add.push({ i, at: x >= 0 ? x : null, type: 'zz', dir: o.dir, why: o.why });
+    }
+    zzNow = Z.now;
+    res.signals = res.signals.filter(s => s.type !== 'zz').concat(add).sort((a, b) => a.i - b.i);
+    res.stats = { ...res.stats, zz: SV.zz.stats(w, Z.list) };
+    indexSignals();
+    renderSignals();
+    renderStats();
+  }
   if (res && res.ctx && htfRaw['1d']) {
     const d = closedH('1d'), list = SV.orange.detect(d), step = STEP[S.interval], add = [], seen = new Set(), gap = S.interval === '1M' ? 3 : S.interval === '1w' ? 8 : 0, lastI = { 1: -1e9, '-1': -1e9 };
     for (const o of list) {
@@ -443,6 +469,41 @@ function scenCard(sc, key) {
     </details>
     <button class="btn sm" data-plan="${key}">Grafiğe çiz</button></div>`;
 }
+function patStateTxt(x) {
+  const lg = x.dir > 0, tierName = ['', '+50 $', '+100 $', '+200 $'];
+  if (x.state === 'triggered') return ['go', `Giriş oluştu · ${x.ago ? x.ago + ' mum önce' : 'son kapanan mumda'}, ${SV.fmt(x.plan.entry)} fiyatından${x.tier ? ` · ${tierName[x.tier]} kademesi görüldü` : ''}`];
+  if (x.state === 'trying') return ['in', `Kırılıyor · mum ${SV.fmt(x.level)} ${lg ? 'üstünde' : 'altında'} kapanırsa giriş oluşur`];
+  if (x.state === 'near') return ['near', `Yaklaşıyor · kırılıma ${x.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(x.distP * 100 * (lg ? 1 : -1))})`];
+  if (x.state === 'wait') return ['wait', `Bekleniyor · kırılıma ${x.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(x.distP * 100 * (lg ? 1 : -1))})`];
+  if (x.state === 'stop') return ['off', `Kırılım stop oldu (${x.ago} mum önce)`];
+  if (x.state === 'be') return ['off', `${tierName[x.tier]} görüldü, kalanı başabaşta kapandı (${x.ago} mum önce)`];
+  return ['off', `+200 $ oldu (${x.ago} mum önce)`];
+}
+function patCard(x) {
+  const key = x.dir > 0 ? 'long' : 'short', lg = x.dir > 0, p = x.plan, st = x.stats, [stc, stt] = patStateTxt(x);
+  const strong = st.p50 >= 0.6 && st.n >= 100;
+  const tier = strong ? '<span class="tier ok">Güçlü</span>' : `<span class="tier mid">Orta${st.n < 60 ? ' · az örnek' : ''}</span>`;
+  const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
+  const mk = x.aligned == null ? '' : `<ul class="ck"><li class="${x.aligned ? 'ok' : 'no'}">${x.aligned ? '✓' : '✗'} Piyasa yönünde</li></ul>`;
+  const live = x.state === 'triggered' || x.state === 'trying';
+  return `<div class="plan ${key} pat${x.state === 'triggered' && strong ? ' good' : ''}">
+    <h3>${lg ? 'Long' : 'Short'} · ${x.name} ${tier}</h3>
+    <p class="st ${stc}">${stt}</p>
+    <p class="zn">Kırılım seviyesi <span class="num">${SV.fmt(x.level)}</span> · formasyon ${lg ? 'yukarı' : 'aşağı'} kırılımı</p>${mk}
+    <table class="lvt"><thead><tr><th></th><th>Fiyat</th><th>Olasılık</th></tr></thead><tbody>
+      ${row(x.state === 'triggered' ? 'Giriş' : 'Giriş ~', p.entry, null)}
+      ${row('Stop −50 $', p.stop, null, 'down')}
+      ${row('+50 $', p.lv[0], st.p50, 'up')}
+      ${row('+100 $', p.lv[1], st.p100, 'up')}
+      ${row('+200 $', p.lv[2], st.p200, 'up')}
+    </tbody></table>
+    <p class="meta">30 günde ort. ${usdTxt(st.usd)} / işlem · ${st.n.toLocaleString('tr-TR')} örnek${st.n < 60 ? ' · <b>az örnek</b>' : ''}</p>
+    <details class="how" data-k="${x.key}"><summary>Nasıl hesaplandı?</summary>
+      <p>Mum, formasyonun ${lg ? 'üst' : 'alt'} çizgisinin 0,25 ATR ${lg ? 'üstünde' : 'altında'} kapanınca o kapanıştan ${lg ? 'long' : 'short'}. Stop %5 (−50 $). +50 $'da üçte biri kapatılır ve stop girişe çekilir, +100 $'da üçte biri, +200 $'da kalanı.</p>
+      <p>Backtest: 30 Binance coini · 4s ve 1G · 30 gün. Olasılık, o kademeye stoptan önce ulaşma oranı. Rastgele girişte +50 $ oranı ${pctTxt(SV.scen.PAT_RAND)}, bütün formasyon kırılımlarında ${pctTxt(SV.scen.PAT_ALL)}; sadece rastgeleden belirgin iyi olan formasyonlar kurulum olarak gösterilir. Coin bölmesi: ${pctTxt(st.a)} / ${pctTxt(st.b)} · 4s ${pctTxt(st.h4)}, 1G ${pctTxt(st.d1)}.</p>
+    </details>
+    <button class="btn sm" data-plan="${x.key}">Grafiğe çiz</button></div>`;
+}
 function marketBox() {
   const t = bars.length ? bars[bars.length - 1].t : Date.now() / 1000, rg = SV.scen.regime(t), M = SV.scen.STATS.market;
   if (!rg) return '<p class="note">Piyasa yönü: BTC aylık verisi yükleniyor…</p>';
@@ -453,16 +514,18 @@ function marketBox() {
     <details class="how" data-k="mkt"><summary>Nasıl belirleniyor?</summary><p>BTC aylık kapanışı 10 aylık ortalamanın üstünde ve ortalama 2 ayda yükselmişse boğa, altında ve düşmüşse ayı; çelişirse önceki yön korunur. Sadece ay kapanışında değişir. Backtest (5 coin, 2018–2026): 90 günde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} / ${pctTxt(M.late.with)} (2018–22 / 2023–26), ters yön ${pctTxt(M.early.against)} / ${pctTxt(M.late.against)}. 8 yılda ${M.flips} kez yön değiştirdi.</p></details></div>`;
 }
 function renderIdea() {
-  try { renderIdeaInner(); } catch (e) { $('idea').innerHTML = '<p class="empty">Senaryo hesaplanamadı.</p>'; idea = null; console.error(e); }
+  $('kurSym').textContent = `· ${S.symbol} ${TFN[S.interval] || S.interval}`;
+  try { renderIdeaInner(); } catch (e) { $('idea').innerHTML = '<p class="empty">Senaryo hesaplanamadı.</p>'; $('kurIdea').innerHTML = '<p class="empty">Senaryo hesaplanamadı.</p>'; idea = null; console.error(e); }
 }
 function renderIdeaInner() {
-  const box = $('idea');
-  if (!bars.length || !res) { box.innerHTML = '<p class="empty">Hesaplanıyor…</p>'; idea = null; return; }
-  if (!res.ctx) { box.innerHTML = `${marketBox()}<p class="empty">Bu grafikte ${bars.length} mum var; senaryo için en az 60 mum gerekiyor. Daha kısa bir zaman dilimine geç.</p>`; idea = null; return; }
-  if (!htfRaw['1M'] && !htfRaw['1w']) { box.innerHTML = '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'; idea = null; return; }
+  const box = $('idea'), kb = $('kurIdea');
+  const both = (side, cards) => { box.innerHTML = side; kb.innerHTML = cards; };
+  if (!bars.length || !res) { both('<p class="empty">Hesaplanıyor…</p>', '<p class="empty">Hesaplanıyor…</p>'); idea = null; return; }
+  if (!res.ctx) { const m = `<p class="empty">Bu grafikte ${bars.length} mum var; senaryo için en az 60 mum gerekiyor. Daha kısa bir zaman dilimine geç.</p>`; both(marketBox() + m, m); idea = null; return; }
+  if (!htfRaw['1M'] && !htfRaw['1w']) { both('<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>', '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'); idea = null; return; }
   const n = bars.length, price = bars[n - 1].c;
   const L = SV.scen.live(bars, res.ctx, htfPair(), closedCount(), S.market + S.symbol, S.interval);
-  if (!L) { box.innerHTML = '<p class="empty">Senaryo için yeterli geçmiş yok.</p>'; idea = null; return; }
+  if (!L) { both(marketBox() + '<p class="empty">Senaryo için yeterli geçmiş yok.</p>', '<p class="empty">Senaryo için yeterli geçmiş yok.</p>'); idea = null; return; }
   const a = L.atr;
   const mark = (c, sc, name) => c ? { ...c, label: name + (sc && sc.strong && sc.zone.lo === c.lo ? ' · güçlü' : '') } : null;
   idea = { res: mark(L.R1, L.short, 'Direnç bölgesi'), sup: mark(L.S1, L.long, 'Destek bölgesi'), atr: a, live: L, plans: {} };
@@ -479,15 +542,22 @@ function renderIdeaInner() {
   const bias = score >= 1.5 ? ['up', 'Yukarı eğilimli'] : score <= -1.5 ? ['down', 'Aşağı eğilimli'] : ['', 'Kararsız'];
   const band = c => `<span class="num">${SV.fmt(c.lo)}${c.hi > c.lo ? ' – ' + SV.fmt(c.hi) : ''}</span> <span class="num ${c.mid >= price ? 'up' : 'down'}">(${SV.pct((c.mid - price) / price * 100)})</span>`;
   ideaAt = Date.now();
-  const openD = new Set([...box.querySelectorAll('details[open]')].map(d => d.dataset.k));
+  const openD = new Set([...box.querySelectorAll('details[open]'), ...kb.querySelectorAll('details[open]')].map(d => d.dataset.k));
   box.innerHTML = `
     ${marketBox()}
     <p class="bias ${bias[0]}" title="${why.join(', ')}">Bu grafikte kısa vade: <b>${bias[1]}</b></p>
     ${orangeLine()}
-    ${scenCard(L.short, 'short')}
-    ${scenCard(L.long, 'long')}
-    <p class="note">Yatırım tavsiyesi değildir · ${new Date(ideaAt).toLocaleTimeString('tr-TR')}</p>`;
-  for (const d of box.querySelectorAll('details[data-k]')) if (openD.has(d.dataset.k)) d.open = true;
+    <p class="note">Short/long kurulumları İşlemler panelinde <button class="ogo" data-kur="1">Kurulumlar</button> sekmesinde. Yatırım tavsiyesi değildir · ${new Date(ideaAt).toLocaleTimeString('tr-TR')}</p>`;
+  const pats = SV.scen.patLive(res.patterns, bars, res.ctx, closedCount(), S.interval);
+  pats.forEach((x, j) => { x.key = 'p' + j; idea.plans[x.key] = { type: x.dir > 0 ? 'long' : 'short', entry: x.plan.entry, stop: x.plan.stop, target: x.plan.lv[1] }; });
+  const col = (key, dir) => {
+    const zs = L[key], items = [{ s: zs && zs.plan ? SV.scen.score(zs.stats) : -1, h: scenCard(zs, key) }, ...pats.filter(x => x.dir === dir).map(x => ({ s: x.score, h: patCard(x) }))];
+    items.sort((x, y) => y.s - x.s);
+    return `<div class="kcol ${key}"><h4>${dir > 0 ? 'Long' : 'Short'} <span class="note">${items.filter(x => x.s >= 0).length} kurulum · güce göre</span></h4>${items.map(x => x.h).join('')}</div>`;
+  };
+  const patNote = SV.scen.PAT_TF.includes(S.interval) ? '' : `<p class="note kfull">Formasyon kurulumları 4s ve 1G grafiklerde çıkar. ${S.interval === '1h' ? '1s grafikte geçmişte rastgele girişten iyi değildi.' : `${TFN[S.interval] || S.interval} test edilmedi.`}</p>`;
+  kb.innerHTML = `${col('short', -1)}${col('long', 1)}${patNote}`;
+  for (const d of [...box.querySelectorAll('details[data-k]'), ...kb.querySelectorAll('details[data-k]')]) if (openD.has(d.dataset.k)) d.open = true;
 }
 const notified = {};
 let sigSeen = { key: '', i: Infinity };
@@ -574,7 +644,7 @@ $('notifyBtn').addEventListener('click', async () => {
   checkAlerts();
 });
 
-$('idea').addEventListener('click', e => {
+const ideaClick = e => {
   const og = e.target.closest('[data-oi]');
   if (og) { const i = +og.dataset.oi; chart.timeScale().setVisibleLogicalRange({ from: i - 120, to: i + 60 }); return; }
   const b = e.target.closest('[data-plan]');
@@ -582,7 +652,9 @@ $('idea').addEventListener('click', e => {
   const p = idea.plans[b.dataset.plan], last = bars[bars.length - 1];
   if (!p) return;
   overlay.add({ type: p.type, a: { t: last.t, p: p.entry }, t2: last.t + 30 * STEP[S.interval], stop: p.stop, target: p.target });
-});
+};
+$('idea').addEventListener('click', e => { if (e.target.closest('[data-kur]')) { SV.trades.show('kur'); return; } ideaClick(e); });
+$('kurIdea').addEventListener('click', ideaClick);
 
 function analyzeNow() {
   res = SV.analysis.compute(bars, S);
@@ -642,11 +714,16 @@ function orangeLine() {
   const line = (type, name, up, dn, none) => {
     const o = res && res.signals ? res.signals.filter(x => x.type === type).pop() : null;
     if (!o) return `<p class="oline">${name}: ${none}</p>`;
-    const t = bars[o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
+    const t = bars[type === 'zz' && o.at != null ? o.at : o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
     return `<p class="oline">${name}: <button class="ogo" data-oi="${o.at ?? o.i}"><span class="tag ${type}">${o.dir > 0 ? up : dn}</span> ${new Date(t * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })} · ${ago ? ago + ' gün önce' : 'bugün'}</button></p>`;
   };
   const enough = htfRaw['1w'] && htfRaw['1w'].length > 120 ? 'bu grafikte yok' : 'en az 2 yıllık haftalık veri gerekir';
-  return line('tric', 'Son dönüş teyidi', '▲ Boğaya döndü', '▼ Ayıya döndü', enough) + line('tri', 'Son ön uyarı', '△ Boğaya dönüş yakın', '▽ Ayıya dönüş yakın', enough) + line('orange', 'Son turuncu', '↑ Dip', '↓ Tepe', 'bu grafikte yok');
+  const zn = zzNow && bars.length ? (() => {
+    const c = bars[bars.length - 1].c, up = zzNow.dir > 0, trig = up ? zzNow.ext / 1.2 : zzNow.ext * 1.2;
+    const moved = up ? 1 - c / zzNow.ext : c / zzNow.ext - 1, left = up ? 1 - trig / c : trig / c - 1;
+    return `<p class="oline note">Şu an ${up ? 'yükseliş' : 'düşüş'} salınımı · ${up ? 'tepe' : 'dip'} ${SV.fmt(zzNow.ext)} (kapanış), fiyat %${Math.max(0, Math.round(moved * 100))} ${up ? 'aşağıda' : 'yukarıda'}${left > 0 ? `; işaret için %${Math.round(left * 100)} daha ${up ? 'düşüş' : 'yükseliş'} gerekir (${SV.fmt(trig)})` : '; haftalık kapanış böyle olursa işaret çıkar'}</p>`;
+  })() : '';
+  return line('tric', 'Son dönüş teyidi', '▲ Boğaya döndü', '▼ Ayıya döndü', enough) + line('tri', 'Son ön uyarı', '△ Boğaya dönüş yakın', '▽ Ayıya dönüş yakın', enough) + line('zz', 'Son %20 dönüş', '● Dip', '● Tepe', 'bu grafikte yok') + zn + line('orange', 'Son turuncu', '↑ Dip', '↓ Tepe', 'bu grafikte yok');
 }
 function renderState() {
   const st = res && res.state;
@@ -676,9 +753,9 @@ function renderState() {
   $('state').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 }
 
-const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P', orange: 'Turuncu', tri: 'Dönüş ön uyarısı', tric: 'Dönüş teyidi' };
+const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P', orange: 'Turuncu', tri: 'Dönüş ön uyarısı', tric: 'Dönüş teyidi', zz: '%20 dönüş' };
 const dtf = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : s.type === 'tri' || s.type === 'tric' ? S.layers.tri : S.layers.big;
+const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : s.type === 'tri' || s.type === 'tric' ? S.layers.tri : s.type === 'zz' ? S.layers.zz : S.layers.big;
 function renderSignals() {
   const list = res ? res.signals.filter(sigOn).slice(-25).reverse() : [];
   $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why.join(' · ')}${s.mk < 0 ? ' · piyasa yönüne ters' : ''}</span></button></li>`).join('')
@@ -701,6 +778,7 @@ const STAT_ROWS = [
   ['react', 'Tepki', 'Aday işaret: 6 mumda 1 ATR, önce 0,7 ATR ters gelmeden'],
   ['tri', 'Ön uyarı', 'İçi boş sarı üçgen, haftalık mumdan. Başarı: 26 hafta içinde (ya da en geç 4 hafta önce) uyarı yönünde büyük dönüş geldi. Ortalama: 26 haftalık getiri (uyarı yönünde). Fark: rastgele haftalara göre'],
   ['tric', 'Teyit', 'Dolu sarı üçgen, haftalık mumdan. Başarı: teyit edilen tepe/dip gerçek büyük dönüş çıktı. Ortalama: teyitten sonraki 26 haftalık getiri. Fark: rastgele haftalara göre'],
+  ['zz', '%20 dönüş', 'Turuncu yuvarlak, haftalık kapanıştan: fiyat tepeden/dipten %20 dönünce o uca konur. Başarı: dönüş haftasından 26 hafta sonra fiyat işaret yönünde. Ortalama: 26 haftalık getiri (işaret yönünde). Fark: rastgele haftalara göre'],
   ['orange', 'Turuncu', 'Günlük mumdan. Başarı: 90 gün içinde sinyal yönünde en az %30 hareket. Ortalama: 90 günlük getiri (sinyal yönünde). Fark: rastgele günlere göre']
 ];
 function renderStats() {
@@ -1036,7 +1114,6 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('online', revive);
 try { if (navigator.locks) navigator.locks.request('seviye-canli', () => new Promise(() => {})); } catch (e) {}
 
-$('storeInfo').textContent = SV.store.isServer() ? 'Kayıt: seviye.db (yerel sunucu). Çizimler ve ayarlar bu dosyada saklanır.' : 'Kayıt: bu tarayıcı. Kalıcı dosya kaydı için klasördeki baslat.bat ile aç.';
 applyVol();
 SV.trades.init({
   candle,
@@ -1065,6 +1142,20 @@ loadBtcMonthly();
 setInterval(loadBtcMonthly, 3600e3);
 SV.scan.init({ cur: () => ({ symbol: S.symbol, market: S.market, interval: S.interval }), notify, open: openTf });
 SV.favs.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view }), toast: t => toast(t, '') });
+(() => {
+  const h = $('sideResize'), main = h.parentElement;
+  const setW = w => { const max = Math.max(300, main.clientWidth - 520); const v = Math.round(Math.min(max, Math.max(260, w))); document.documentElement.style.setProperty('--side', v + 'px'); return v; };
+  const saved = SV.store.get('seviye.sagGenislik', null);
+  if (saved) setW(saved);
+  let id = null;
+  h.addEventListener('pointerdown', e => { e.preventDefault(); id = e.pointerId; h.setPointerCapture(id); h.classList.add('drag'); });
+  h.addEventListener('pointermove', e => { if (id !== e.pointerId) return; setW(main.getBoundingClientRect().right - e.clientX); });
+  const end = e => { if (id !== e.pointerId) return; id = null; h.classList.remove('drag'); SV.store.set('seviye.sagGenislik', $('side').getBoundingClientRect().width); };
+  h.addEventListener('pointerup', end);
+  h.addEventListener('pointercancel', end);
+  h.addEventListener('dblclick', () => { document.documentElement.style.removeProperty('--side'); SV.store.set('seviye.sagGenislik', null); });
+  h.addEventListener('keydown', e => { if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return; e.preventDefault(); SV.store.set('seviye.sagGenislik', setW($('side').getBoundingClientRect().width + (e.key === 'ArrowLeft' ? 30 : -30))); });
+})();
 SV.watch.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view, dom: S.dom }), go: (m, s) => go(m, s), dom: tv => { S.dom = tv; setView('dom'); }, kind: s => !!TRADFI[s] });
 renderNotifyBtn();
 theme();

@@ -4,10 +4,11 @@ SV.favs = (() => {
   const SEED = [['BTCUSDT', 'spot'], ['ETHUSDT', 'spot'], ['SOLUSDT', 'spot'], ['HYPEUSDT', 'futures'], ['LDOUSDT', 'spot'], ['AVAXUSDT', 'spot'], ['XRPUSDT', 'spot']];
   const BASE = { spot: 'https://api.binance.com/api/v3/ticker/24hr?symbol=', futures: 'https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=' };
   let D = null, list = [], chg = {}, timer = null;
+  const subs = [];
   const $ = id => document.getElementById(id);
   const key = (m, s) => m + ':' + s;
   const label = s => s.replace(/(USDT|USDC|FDUSD|BUSD)$/, '') || s;
-  const save = () => SV.store.set('seviye.favoriler', list);
+  const save = () => { SV.store.set('seviye.favoriler', list); for (const f of subs) f(); };
   const has = (m, s) => list.some(f => f.m === m && f.s === s);
 
   function render() {
@@ -34,6 +35,15 @@ SV.favs = (() => {
     if (has(m, s)) { list = list.filter(f => !(f.m === m && f.s === s)); D.toast(`${label(s)} favorilerden çıkarıldı`); }
     else { list.push({ s, m }); D.toast(`${label(s)} favorilere eklendi`); refresh(); }
     save(); render();
+  }
+
+  function add(m, s) {
+    if (has(m, s)) return;
+    list.push({ s, m }); save(); render(); refresh();
+  }
+
+  function remove(m, s) {
+    list = list.filter(f => !(f.m === m && f.s === s)); save(); render();
   }
 
   function fix(s, from, to) {
@@ -66,5 +76,5 @@ SV.favs = (() => {
     timer = setInterval(() => { if (!document.hidden) refresh(); }, 30000);
   }
 
-  return { init, sync, fix, has, list: () => list };
+  return { init, sync, fix, has, add, remove, list: () => list, onChange: f => subs.push(f) };
 })();
