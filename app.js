@@ -12,7 +12,7 @@ const TZ = -new Date().getTimezoneOffset() * 60;
 const DEF = {
   market: 'spot', symbol: 'BTCUSDT', interval: '4h', pivot: 5, levels: 5, tol: 0.6, sens: 4, cool: 20, ext: 20, depth: 3000, layersOpen: true, log: false, opacity: 0.5, notify: false, volH: 0.18,
   account: 1000, riskPct: 1, view: 'chart', dom: 'CRYPTOCAP:BTC.D',
-  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, orange: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
+  layers: { bs: true, vol: true, pos: true, zone: true, idea: true, react: true, big: true, ltb: true, rev: true, orange: true, tri: true, htf1M: true, htf1w: true, htf1d: true, pat: true, para: true, levels: true, sma: false, hist: true }
 };
 const S = JSON.parse(JSON.stringify(DEF));
 {
@@ -22,7 +22,7 @@ const S = JSON.parse(JSON.stringify(DEF));
 const save = () => SV.store.set('seviye', S);
 if (!('layersOpen' in SV.store.get('seviye', {})) && innerWidth < 700) S.layersOpen = false;
 const LAYERS = [
-  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'], ['orange', 'Turuncu (büyük dönüş)', 'orange'],
+  ['bs', 'Buy / Sell', 'buy'], ['zone', 'Direnç reddi (HTF)', 'zone'], ['idea', 'Fikir bölgeleri', 'idea'], ['react', 'Tepki (iğne)', 'react'], ['big', 'Mor / yeşil çizgi', 'big'], ['ltb', 'Mor P (uzun vade)', 'ltb'], ['rev', 'Sarı çizgi', 'rev'], ['orange', 'Turuncu (büyük dönüş)', 'orange'], ['tri', 'Sarı üçgen (piyasa dönüşü)', 'tri'],
   ['pat', 'Formasyonlar', 'pat'], ['para', 'Parabolik yay', 'para'], ['htf1M', 'Aylık trend', 'tr w3'], ['htf1w', 'Haftalık trend', 'tr w2'],
   ['htf1d', 'Günlük trend', 'tr'], ['levels', 'Destek / direnç', 'lv'], ['sma', 'SMA 50 / 200', 'sma'], ['vol', 'Hacim', 'volb'], ['pos', 'İşlemlerim', 'pos'], ['hist', 'Geçmiş işlemlerim', 'hist']
 ];
@@ -194,7 +194,7 @@ async function load() {
       return;
     }
     setLive('err', 'Hata');
-    if (e.fatal) showMsg('Parite bulunamadı', `${S.symbol} ${S.market === 'spot' ? 'spot' : 'vadeli'} piyasada yok.${S.market === 'spot' ? ' Altın, gümüş, bakır ve Brent sadece Vadeli\'de var.' : ''} (${e.message})`);
+    if (e.fatal) showMsg('Parite bulunamadı', `${S.symbol} ${S.market === 'spot' ? 'spot' : 'vadeli'} piyasada yok.${S.market === 'spot' ? ' Altın, gümüş, bakır, Brent ve hisseler (NVDA, AAPL…) sadece Vadeli\'de var.' : ''} (${e.message})`);
     else showMsg('Binance verisine ulaşılamadı', `İnternet bağlantını kontrol et. Bazı ülkelerde Binance API'si (özellikle vadeli) engelli olabilir. Dosya açılışında sorun olursa klasörde "python -m http.server" çalıştırıp localhost:8000/seviye.html adresinden aç. (${e.message})`);
   }
 }
@@ -203,8 +203,10 @@ const WSS = { spot: ['wss://stream.binance.com:9443/ws/', 'wss://stream.binance.
 let wsIdx = 0, wsFails = 0, gotMsg = false, firstTimer = null, pollTimer = null, polling = false;
 
 function ingest(b, closed) {
-  lastMsg = Date.now();
   const last = bars[bars.length - 1];
+  if (![b.o, b.h, b.l, b.c].every(x => x > 0 && isFinite(x))) return;
+  if (last && (b.c > last.c * 4 || b.c < last.c / 4 || b.l < last.c / 4 || b.h > last.c * 4)) return;
+  lastMsg = Date.now();
   if (last && b.t === last.t) bars[bars.length - 1] = b;
   else if (!last || b.t > last.t) bars.push(b);
   else return;
@@ -213,7 +215,7 @@ function ingest(b, closed) {
   header();
   overlay.invalidate();
   if (closed) { if (document.hidden) analyzeNow(); else analyzeSoon(); }
-  else { renderLevelTable(); renderPositions(); }
+  else renderLevelTable();
   checkAlerts();
   if (SV.trades) SV.trades.tick();
 }
@@ -263,10 +265,10 @@ function connectWs(my) {
   firstTimer = setTimeout(() => { if (!gotMsg) failWs(my); }, 12000);
   ws.onopen = () => { if (!polling) setLive('wait', 'Bağlandı, veri bekleniyor'); };
   ws.onmessage = ev => {
-    if (!gotMsg) { gotMsg = true; clearTimeout(firstTimer); wsFails = 0; retry = 0; stopPoll(); setLive('on', 'Canlı'); }
     let k;
     try { k = JSON.parse(ev.data).k; } catch (e) { return; }
-    if (!k) return;
+    if (!k || my !== wsToken || (k.s && k.s.toUpperCase() !== S.symbol) || (k.i && k.i !== S.interval)) return;
+    if (!gotMsg) { gotMsg = true; clearTimeout(firstTimer); wsFails = 0; retry = 0; stopPoll(); setLive('on', 'Canlı'); }
     ingest({ t: k.t / 1000, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.v }, !!k.x);
   };
   ws.onclose = () => {
@@ -312,6 +314,31 @@ function computeHtf() {
     const z = SV.zones.resistanceSells(bars, res.ctx, { '1M': htfRaw['1M'], '1w': htfRaw['1w'] });
     res.signals = res.signals.filter(s => s.type !== 'zsell').concat(z).sort((a, b) => a.i - b.i);
     res.stats = SV.analysis.evaluate(bars, res.ctx, res.signals);
+    indexSignals();
+    renderSignals();
+    renderStats();
+  }
+  if (res && res.ctx && htfRaw['1w']) {
+    const w = closedH('1w'), list = SV.turn.detect(w), step = STEP[S.interval], add = [], seen = new Set();
+    const at = target => { let lo = 0, hi = bars.length - 1, i = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (bars[m].t <= target) { i = m; lo = m + 1; } else hi = m - 1; } return i < 0 || target >= bars[i].t + step ? -1 : i; };
+    const ext = (t0, dir) => {
+      if (step >= 604800) return at(t0);
+      let best = -1;
+      for (let k = Math.max(0, at(t0) - 1); k < bars.length && bars[k].t < t0 + 604800; k++) {
+        if (bars[k].t < t0) continue;
+        if (best < 0 || (dir > 0 ? bars[k].l < bars[best].l : bars[k].h > bars[best].h)) best = k;
+      }
+      return best;
+    };
+    for (const o of list) {
+      const i = at(step >= 604800 ? o.t : o.t + 604800 - step), type = o.kind === 'conf' ? 'tric' : 'tri';
+      if (i < 0 || seen.has(type + i + ':' + o.dir)) continue;
+      seen.add(type + i + ':' + o.dir);
+      const x = o.kind === 'conf' ? ext(o.tr, o.dir) : i;
+      add.push({ i, at: x >= 0 ? x : null, type, dir: o.dir, why: o.why });
+    }
+    res.signals = res.signals.filter(s => s.type !== 'tri' && s.type !== 'tric').concat(add).sort((a, b) => a.i - b.i);
+    res.stats = { ...res.stats, tri: SV.turn.stats(w, list, 'pre'), tric: SV.turn.stats(w, list, 'conf') };
     indexSignals();
     renderSignals();
     renderStats();
@@ -473,13 +500,44 @@ function toast(title, body) {
   setTimeout(() => el.classList.add('out'), 9000);
   setTimeout(() => el.remove(), 9600);
 }
-function notify(title, body, key, coolMs = 3 * 3600e3) {
+let notes = SV.store.get('seviye.bildirimler', []), noteSeen = SV.store.get('seviye.bildirimOkundu', 0);
+let sentKeys = SV.store.get('seviye.bildirimAnahtar', []);
+const sentSet = new Set([...sentKeys, ...notes.map(x => x.title + '|' + x.body)]);
+const noteDt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+function addNote(title, body, ctx) {
+  notes.unshift({ t: Date.now(), title, body, m: ctx.m, s: ctx.s, tf: ctx.tf });
+  notes = notes.slice(0, 200);
+  SV.store.set('seviye.bildirimler', notes);
+  if (SV.trades.tab() === 'not' && SV.trades.isOpen()) markRead(); else renderNotes();
+}
+function markRead() {
+  noteSeen = Date.now();
+  SV.store.set('seviye.bildirimOkundu', noteSeen);
+  renderNotes();
+}
+function renderNotes() {
+  const n = notes.filter(x => x.t > noteSeen).length;
+  const b = $('bellBadge'); b.textContent = n > 99 ? '99+' : n; b.hidden = !n;
+  $('bellBtn').title = n ? `${n} okunmamış bildirim` : 'Bildirimler';
+  const tb = $('tradesTabs').querySelector('[data-v="not"]');
+  if (tb) tb.innerHTML = `Bildirimler${n ? ` <span class="nbadge">${n > 99 ? '99+' : n}</span>` : ''}`;
+  const box = $('notView');
+  if (!box) return;
+  const head = `<div class="nhead"><span class="note">${S.notify ? 'Bildirimler açık.' : 'Bildirimler kapalı; açmak için sağdaki "Bildirimleri aç" düğmesine bas.'} ${notes.length} bildirim · en fazla 200 saklanır.</span>${notes.length ? '<button class="link" data-nclear="1">Temizle</button>' : ''}</div>`;
+  box.innerHTML = head + (notes.length ? `<ul class="nlist">${notes.map((x, k) => `<li class="${x.t > noteSeen ? 'new' : ''}"><time>${noteDt.format(x.t)}</time><div><b></b><span></span></div>${x.s ? `<button class="chip" data-nk="${k}">Grafiği aç</button>` : ''}</li>`).join('')}</ul>` : '<p class="note">Henüz bildirim yok.</p>');
+  box.querySelectorAll('.nlist li').forEach((li, k) => { li.querySelector('b').textContent = notes[k].title; li.querySelector('span').textContent = notes[k].body; });
+}
+function notify(title, body, key, coolMs = 3 * 3600e3, ctx) {
   if (!S.notify) return;
   const t = Date.now();
   if (notified[key] && t - notified[key] < coolMs) return;
   notified[key] = t;
-  toast(title, body);
-  try { if ('Notification' in window && Notification.permission === 'granted') new Notification(title, { body, tag: key }); } catch (e) {}
+  const txt = title + '|' + body;
+  if (sentSet.has(key) || sentSet.has(txt)) return;
+  sentSet.add(key); sentSet.add(txt);
+  sentKeys = [...sentKeys, key, txt].slice(-3000);
+  SV.store.set('seviye.bildirimAnahtar', sentKeys);
+  addNote(title, body, ctx || { m: S.market, s: S.symbol, tf: S.interval });
 }
 function checkAlerts() {
   if (!S.notify || !idea || !idea.live || !bars.length) return;
@@ -511,11 +569,8 @@ function renderNotifyBtn() {
   $('notifyBtn').setAttribute('aria-pressed', !!S.notify);
 }
 $('notifyBtn').addEventListener('click', async () => {
-  S.notify = !S.notify; save(); renderNotifyBtn();
+  S.notify = !S.notify; save(); renderNotifyBtn(); renderNotes();
   if (!S.notify) return;
-  let perm = 'denied';
-  try { perm = 'Notification' in window ? (Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission) : 'denied'; } catch (e) {}
-  toast('Bildirimler açık', perm === 'granted' ? 'Bölgelere yaklaşınca, iyi giriş oluşunca (açık grafik ve favoriler) ve yeni sinyal gelince haber vereceğim. Sayfa açık kalmalı.' : 'Tarayıcı bildirim izni yok; uyarılar sadece bu sayfada görünecek. baslat.bat ile açınca izin verilebilir.');
   checkAlerts();
 });
 
@@ -538,7 +593,6 @@ function analyzeNow() {
   renderSignals();
   renderStats();
   renderPatterns();
-  renderPositions();
   computeHtf();
   overlay.invalidate();
 }
@@ -585,10 +639,14 @@ function renderLevelTable() {
 
 const word = d => d === 'up' ? '<span class="up">Yükseliş</span>' : d === 'down' ? '<span class="down">Düşüş</span>' : '—';
 function orangeLine() {
-  const o = res && res.signals ? res.signals.filter(x => x.type === 'orange').pop() : null;
-  if (!o) return '<p class="oline">Son turuncu: bu grafikte yok</p>';
-  const t = bars[o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
-  return `<p class="oline">Son turuncu: <button class="ogo" data-oi="${o.i}"><span class="tag orange">${o.dir > 0 ? '↑ Dip' : '↓ Tepe'}</span> ${new Date(t * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })} · ${ago ? ago + ' gün önce' : 'bugün'}</button></p>`;
+  const line = (type, name, up, dn, none) => {
+    const o = res && res.signals ? res.signals.filter(x => x.type === type).pop() : null;
+    if (!o) return `<p class="oline">${name}: ${none}</p>`;
+    const t = bars[o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
+    return `<p class="oline">${name}: <button class="ogo" data-oi="${o.at ?? o.i}"><span class="tag ${type}">${o.dir > 0 ? up : dn}</span> ${new Date(t * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })} · ${ago ? ago + ' gün önce' : 'bugün'}</button></p>`;
+  };
+  const enough = htfRaw['1w'] && htfRaw['1w'].length > 120 ? 'bu grafikte yok' : 'en az 2 yıllık haftalık veri gerekir';
+  return line('tric', 'Son dönüş teyidi', '▲ Boğaya döndü', '▼ Ayıya döndü', enough) + line('tri', 'Son ön uyarı', '△ Boğaya dönüş yakın', '▽ Ayıya dönüş yakın', enough) + line('orange', 'Son turuncu', '↑ Dip', '↓ Tepe', 'bu grafikte yok');
 }
 function renderState() {
   const st = res && res.state;
@@ -618,9 +676,9 @@ function renderState() {
   $('state').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 }
 
-const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P', orange: 'Turuncu' };
+const SIG_NAME = { buy: 'Buy', sell: 'Sell', zsell: 'Direnç', bull: 'Yeşil', bear: 'Mor', rev: 'Sarı', react: 'Tepki', ltb: 'P', orange: 'Turuncu', tri: 'Dönüş ön uyarısı', tric: 'Dönüş teyidi' };
 const dtf = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : S.layers.big;
+const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : s.type === 'tri' || s.type === 'tric' ? S.layers.tri : S.layers.big;
 function renderSignals() {
   const list = res ? res.signals.filter(sigOn).slice(-25).reverse() : [];
   $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why.join(' · ')}${s.mk < 0 ? ' · piyasa yönüne ters' : ''}</span></button></li>`).join('')
@@ -641,6 +699,8 @@ const STAT_ROWS = [
   ['bear', 'Mor', '40 mumda 4 ATR düşüş, önce 2 ATR yükseliş gelmeden'],
   ['bull', 'Yeşil', '40 mumda 4 ATR yükseliş, önce 2 ATR düşüş gelmeden'],
   ['react', 'Tepki', 'Aday işaret: 6 mumda 1 ATR, önce 0,7 ATR ters gelmeden'],
+  ['tri', 'Ön uyarı', 'İçi boş sarı üçgen, haftalık mumdan. Başarı: 26 hafta içinde (ya da en geç 4 hafta önce) uyarı yönünde büyük dönüş geldi. Ortalama: 26 haftalık getiri (uyarı yönünde). Fark: rastgele haftalara göre'],
+  ['tric', 'Teyit', 'Dolu sarı üçgen, haftalık mumdan. Başarı: teyit edilen tepe/dip gerçek büyük dönüş çıktı. Ortalama: teyitten sonraki 26 haftalık getiri. Fark: rastgele haftalara göre'],
   ['orange', 'Turuncu', 'Günlük mumdan. Başarı: 90 gün içinde sinyal yönünde en az %30 hareket. Ortalama: 90 günlük getiri (sinyal yönünde). Fark: rastgele günlere göre']
 ];
 function renderStats() {
@@ -747,28 +807,6 @@ $('pats').addEventListener('click', e => {
   overlay.invalidate();
 });
 
-function renderPositions() {
-  const list = overlay.list().filter(d => d.type === 'long' || d.type === 'short');
-  if (!list.length) { $('pos').innerHTML = '<li class="empty">Soldaki long/short aracıyla grafiğe tıklayarak pozisyon ekle.</li>'; return; }
-  $('pos').innerHTML = list.map(d => {
-    const st = overlay.stats(d), o = st.outcome;
-    const res = o.k === 'target' ? '<span class="up">Hedef ✓</span>' : o.k === 'stop' ? '<span class="down">Stop ✗</span>'
-      : o.k === 'wait' ? 'Bekliyor' : `<span class="${o.pnl >= 0 ? 'up' : 'down'}">${o.k === 'open' ? 'Açık' : 'Süre doldu'} ${SV.pct(o.pnl)}</span>`;
-    const qty = st.qty >= 100 ? st.qty.toFixed(0) : st.qty >= 1 ? st.qty.toFixed(2) : st.qty.toPrecision(3);
-    return `<li data-id="${d.id}"><span><span class="tag ${d.type === 'long' ? 'buy' : 'sell'}">${d.type === 'long' ? 'Long' : 'Short'}</span> <span class="num">${SV.fmt(d.a.p)}</span></span><span>${res}</span><small>Hedef ${SV.fmt(d.target)} · Stop ${SV.fmt(d.stop)} · R:R ${st.rr.toFixed(2).replace('.', ',')} · Miktar ${qty} (${Math.round(st.value).toLocaleString('tr-TR')} USDT)</small></li>`;
-  }).join('');
-}
-$('pos').addEventListener('click', e => {
-  const li = e.target.closest('li[data-id]');
-  if (!li) return;
-  const d = overlay.list().find(x => x.id === li.dataset.id);
-  if (!d) return;
-  overlay.select(d.id);
-  let lo = 0;
-  while (lo < bars.length - 1 && bars[lo].t < d.a.t) lo++;
-  chart.timeScale().setVisibleLogicalRange({ from: lo - 60, to: lo + 80 });
-});
-
 function header() {
   if (!bars.length) return;
   const last = bars[bars.length - 1];
@@ -805,7 +843,6 @@ overlay.onTool(t => {
 });
 overlay.onChange(() => {
   $('delSel').disabled = !overlay.selected();
-  renderPositions();
   renderDrawings();
 });
 $('tools').addEventListener('click', e => {
@@ -866,6 +903,7 @@ async function loadDominance() {
 }
 
 function syncQuick() {
+  if (SV.watch && SV.watch.list) SV.watch.render();
   for (const b of $('quick').querySelectorAll('button[data-s], button[data-d]')) {
     const on = b.dataset.d ? S.view === 'dom' && S.dom === b.dataset.d : S.view === 'chart' && S.symbol === b.dataset.s && S.market === b.dataset.m;
     b.setAttribute('aria-pressed', on);
@@ -883,8 +921,6 @@ function syncUi() {
   $('depth').value = String(S.depth);
   $('logBtn').setAttribute('aria-pressed', !!S.log);
   candle.priceScale().applyOptions({ mode: S.log ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal });
-  $('account').value = S.account;
-  $('riskPct').value = S.riskPct;
   renderLayers();
   syncQuick();
 }
@@ -913,9 +949,34 @@ $('quick').addEventListener('click', e => {
 });
 $('domSeg').addEventListener('click', e => { const d = e.target.closest('button')?.dataset.d; if (d) { S.dom = d; setView('dom'); } });
 $('domBack').addEventListener('click', () => setView('chart'));
+const TRADFI = {};
+const STOCK_NAMES = { NVDA: 'Nvidia', AAPL: 'Apple', MSFT: 'Microsoft', GOOGL: 'Alphabet (Google)', AMZN: 'Amazon', META: 'Meta', TSLA: 'Tesla', AVGO: 'Broadcom', AMD: 'AMD', TSM: 'TSMC', INTC: 'Intel', MU: 'Micron', QCOM: 'Qualcomm', ORCL: 'Oracle', PLTR: 'Palantir', COIN: 'Coinbase', MSTR: 'Strategy (MicroStrategy)', HOOD: 'Robinhood', NFLX: 'Netflix', SPY: 'S&P 500 ETF', QQQ: 'Nasdaq 100 ETF', JPM: 'JPMorgan', V: 'Visa', WMT: 'Walmart', BRKB: 'Berkshire Hathaway B', LLY: 'Eli Lilly', NVO: 'Novo Nordisk', BABA: 'Alibaba', UBER: 'Uber', DIS: 'Disney', CRM: 'Salesforce', IBM: 'IBM', DELL: 'Dell', ARM: 'Arm', CRWD: 'CrowdStrike', XAU: 'Altın', XAG: 'Gümüş', XPT: 'Platin', XPD: 'Paladyum', COPPER: 'Bakır', BZ: 'Brent petrol', CL: 'WTI petrol', NATGAS: 'Doğalgaz' };
+const KIND = { EQUITY: 'ABD hissesi', KR_EQUITY: 'Kore hissesi', HK_EQUITY: 'Hong Kong hissesi', CN_EQUITY: 'Çin hissesi', PREMARKET: 'halka arz öncesi', COMMODITY: 'emtia', FX: 'döviz', INDEX: 'endeks' };
+async function loadTradfi() {
+  let info = null;
+  try { const r = await fetch('https://fapi.binance.com/fapi/v1/exchangeInfo'); if (r.ok) info = await r.json(); } catch (e) {}
+  if (!info) return;
+  for (const s of info.symbols) {
+    if (s.status !== 'TRADING' || !s.underlyingType || s.underlyingType === 'COIN' || s.quoteAsset !== 'USDT') continue;
+    TRADFI[s.symbol] = { base: s.baseAsset, kind: s.underlyingType, since: s.onboardDate };
+  }
+  const list = $('syms'), have = new Set([...list.options].map(o => o.value));
+  const keys = Object.keys(TRADFI).sort((a, b) => (STOCK_NAMES[TRADFI[b].base] ? 1 : 0) - (STOCK_NAMES[TRADFI[a].base] ? 1 : 0) || a.localeCompare(b));
+  for (const k of keys) {
+    const t = TRADFI[k], label = `${STOCK_NAMES[t.base] ? STOCK_NAMES[t.base] + ' · ' : ''}${KIND[t.kind] || t.kind} · vadeli`;
+    const o = have.has(k) ? [...list.options].find(x => x.value === k) : document.createElement('option');
+    o.value = k; o.label = label;
+    if (!have.has(k)) list.appendChild(o);
+  }
+}
+loadTradfi();
 function setSym() {
-  const v = $('sym').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (v && v !== S.symbol) go(S.market, v);
+  let v = $('sym').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!v) { $('sym').value = S.symbol; return; }
+  if (!TRADFI[v] && TRADFI[v + 'USDT']) v += 'USDT';
+  else if (!/^[A-Z0-9]{2,}(USDT|USDC|FDUSD|BTC|ETH|BNB|TRY|EUR)$/.test(v)) v += 'USDT';
+  const market = TRADFI[v] ? 'futures' : S.market;
+  if (v !== S.symbol || market !== S.market) go(market, v);
   else $('sym').value = S.symbol;
 }
 $('sym').addEventListener('change', setSym);
@@ -928,14 +989,6 @@ for (const k of ['pivot', 'levels', 'tol']) {
     $('o_' + k).textContent = S[k];
     save();
     if (bars.length) analyzeSoon();
-  });
-}
-for (const k of ['account', 'riskPct']) {
-  $(k).addEventListener('input', () => {
-    const v = parseFloat($(k).value.replace(',', '.'));
-    if (!(v > 0)) return;
-    S[k] = v; save();
-    renderPositions(); overlay.invalidate();
   });
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && patSel != null) { patSel = null; renderPatterns(); overlay.invalidate(); } });
@@ -992,7 +1045,15 @@ SV.trades.init({
   layer: () => !!S.layers.pos,
   goTo: (m, s) => go(m, s),
   focus: focusTrade,
-  resized: () => overlay.invalidate()
+  resized: () => overlay.invalidate(),
+  onTab: t => { if (t === 'not') markRead(); }
+});
+renderNotes();
+$('bellBtn').addEventListener('click', () => SV.trades.show('not'));
+$('notView').addEventListener('click', e => {
+  const c = e.target.closest('[data-nclear]'), o = e.target.closest('[data-nk]');
+  if (c) { notes = []; SV.store.set('seviye.bildirimler', notes); renderNotes(); }
+  else if (o) { const x = notes[+o.dataset.nk]; if (x && x.s) openTf(x.m || 'spot', x.s, x.tf || S.interval); }
 });
 function openTf(m, s, tf) {
   const same = m === S.market && s === S.symbol, ch = tf !== S.interval;
@@ -1004,6 +1065,7 @@ loadBtcMonthly();
 setInterval(loadBtcMonthly, 3600e3);
 SV.scan.init({ cur: () => ({ symbol: S.symbol, market: S.market, interval: S.interval }), notify, open: openTf });
 SV.favs.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view }), toast: t => toast(t, '') });
+SV.watch.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view, dom: S.dom }), go: (m, s) => go(m, s), dom: tv => { S.dom = tv; setView('dom'); }, kind: s => !!TRADFI[s] });
 renderNotifyBtn();
 theme();
 syncUi();

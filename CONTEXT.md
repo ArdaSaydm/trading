@@ -37,6 +37,8 @@ Kullanıcının kendi analizi için çizim araçları da var: trend çizgisi, ya
 | `indicators.js` | `SV.ind`: SMA, EMA, standart sapma, RSI, ATR, MACD, pivotlar, medyan. Ayrıca `SV.fmt`, `SV.pct`, `SV.prec` |
 | `patterns.js` | `SV.patterns.detect(bars, ctx, S)`: formasyonlar ve parabolik trend |
 | `analysis.js` | `SV.analysis.compute` (seviyeler, sinyaller, başarı istatistikleri, formasyonlar, durum), `htfTrends`, `arcs`, `signals`, `evaluate`, `indicators` |
+| `turn.js` | `SV.turn`: Sarı üçgen (ön uyarı + teyit) piyasa dönüşü (`detect`, `stats`), haftalık mumlardan |
+| `watch.js` | `SV.watch`: izleme listesi (Binance, CoinGecko, Yahoo proxy) |
 | `orange.js` | `SV.orange`: Turuncu büyük dönüş deseni (`detect`, `stats`), günlük mumlardan |
 | `zones.js` | `SV.zones`: üst zaman dilimi (aylık/haftalık) direnç-destek motoru. `timeline` her yeni haftalık/aylık mumda bölgeleri yeniden hesaplar (geçmişe dönük değişmez). Ayrıca `resistanceSells` (Direnç sinyali), `now` ve `clusters` (İşlem fikri paneli) |
 | `scenario.js` | `SV.scen`: İşlem fikri senaryoları. HTF bölgeleri, tetik, plan (stop/TP1/TP2), güçlü kurulum koşulları, canlı durum (`live`), grafiğin geçmişindeki sonuç (`history`), gömülü backtest sonuçları (`STATS`) |
@@ -151,6 +153,17 @@ Kullanıcının isteği: Hyperliquid'de açtığı işlemi grafikte görmek, kâ
 
 **Sekmeler:** Pozisyonlar, Geçmiş, Analiz. Geçmiş ve Analiz aynı dönem (7G/30G/90G/1Y/Tümü) ve sembol filtresini kullanır.
 
+### Hesap özeti (Pozisyonlar sekmesi, 24 Kasım 2026)
+
+`#acct` (tablonun üstü), `trades.js` `acctHtml`. Hyperliquid bağlıysa:
+- `clearinghouseState` (ana + xyz dex) `marginSummary.accountValue / totalMarginUsed`, `crossMaintenanceMarginUsed`, `withdrawable` toplanır (her 8 sn).
+- Spot: `spotClearinghouseState` + `spotMetaAndAssetCtxs` (40 sn'de bir, meta 10 dk önbellek). USDC birebir, diğer tokenlar USDC çiftinin `markPx`'i ile.
+- Canlı: açık K/Z tablo satırlarındaki fiyatla (`stats().open`) hesaplanır; perp bakiyesi = accountValue − HL'nin K/Z'si + canlı K/Z.
+- Kutular: Toplam bakiye (perp + spot), Açık K/Z, Kullanılan teminat, Çekilebilir, Pozisyon büyüklüğü (efektif kaldıraç), Teminat oranı (bakım teminatı / bakiye).
+- **Birleşik hesap (unified account / portfolio margin):** `userAbstraction` ile anlaşılır (10 dk'da bir). Bu modda Hyperliquid tüm bakiye ve blokajları spot durumunda gösterir; perp `clearinghouseState` özetleri anlamsızdır (resmî belge). Kullanıcının hesabı bu modda: açık limit emir varken perp `accountValue` dolu geliyordu ve spot ile toplanınca bakiye emir kadar şişiyordu (gerçek 1.804,82 $). Düzeltme: toplam = spot (USDC total + diğer tokenlar) + (canlı K/Z − HL K/Z); spot 8 sn'de bir yenilenir. "Emirlere ayrılan" = USDC hold − pozisyon teminatı; "Kullanılabilir" = USDC total − hold; teminat oranı = Σ crossMaintenanceMarginUsed / (USDC total − izole teminat). Varsayım: spot USDC total açık K/Z'yi içerir (NautilusTrader ve perp-cli uygulamaları böyle kabul ediyor); kullanıcıda açık pozisyonla henüz doğrulanmadı.
+- **Açık emirler sekmesi** (`#ordView`, `renderOrders`): `frontendOpenOrders` (ana + xyz) tüm emirler; sembol, yön, tür (limit / stop / kâr al, poz. TP/SL, sadece azalt), fiyat (tetik ve limit), miktar, değer, güncel fiyat, uzaklık, zaman. Sekme başlığında emir sayısı. Sembole tıklayınca grafik açılır.
+- HL bağlı değilse özet gösterilmez. Sağ paneldeki "Pozisyon hesabı" bölümü (hesap, işlem başı risk %, çizilen long/short listesi) kullanıcı isteğiyle kaldırıldı (24 Kasım 2026). Long/short çizim aracı miktarı hâlâ kayıtlı `account` (varsayılan 1000) ve `riskPct` (varsayılan 1) ile hesaplar.
+
 ## İşlem geçmişi (`history.js`)
 
 Kullanıcının isteği: Hyperliquid hesabındaki geçmiş işlemleri ve kâr/zarar analizini görmek.
@@ -169,6 +182,32 @@ Kullanıcının isteği: Hyperliquid hesabındaki geçmiş işlemleri ve kâr/za
 - Parite kutusunun yanındaki yıldız açık pariteyi (sembol + piyasa) favorilere ekler ya da çıkarır.
 - Favoriler üst şeritte çip olarak durur, yanında 30 saniyede bir güncellenen 24 saatlik değişim (Binance `ticker/24hr`).
 - Bir sembol spotta yoksa (`Invalid symbol`) grafik otomatik olarak vadeliye geçer ve favorideki piyasa da düzeltilir.
+
+## Canlı veri koruması (24 Kasım 2026)
+
+Kullanıcının NVDAUSDT 1s grafiğinde son mum 0,2345'e indi (−%99,83), otomatik ölçek bozuldu. Binance REST'te veri normaldi (fiyat ~156, 24 saatlik dip 134); kaynak bulunamadı, tekrar üretilemedi. Koruma eklendi:
+- WebSocket mesajı sadece `k.s` = açık sembol ve `k.i` = açık zaman dilimi ise ve bağlantı güncelse (`wsToken`) kabul edilir; uymayan mesaj "canlı" sayılmaz.
+- `ingest`: sıfır/negatif/sonsuz fiyat ya da son kapanışın 4 katı üstü / 4'te biri altı mum güncellemesi atılır.
+
+## İzleme listesi (`watch.js`, 24 Kasım 2026)
+
+Kullanıcı TradingView tarzı bir izleme listesi istedi (ekran görüntüsü: USDT.D+USDC.D, USDT.D, BTC.D, VIX, TOTAL3, TOTAL, BTCUSD, ETHUSDT, SOLUSDT, HYPEUSDT…). Sağ panelin en üstünde.
+- Sütunlar: Sembol, Son, Değ., Değ.% (24 saatlik). Gruplar: Göstergeler, Kripto, Hisse ve emtia (TradFi kontratları `TRADFI`'den). 10 sn'de bir güncellenir.
+- Kaynaklar:
+  - Binance 24 saatlik ticker: spot toplu, vadeli tek tek; spotta yoksa kendiliğinden vadeliye geçer.
+  - CoinGecko `global` (60 sn): BTC.D, ETH.D, USDT.D, USDC.D, USDT.D+USDC.D, TOTAL, TOTAL2, TOTAL3.
+  - `server.py` `/api/quote` (Yahoo, 60 sn, sadece baslat.bat ile): VIX, DXY, SPX, NDX.
+- Değişim: CoinGecko `coins/markets` (ilk 250 coin) `market_cap_change_24h` ile önceki değerler: önceki toplam = toplam × Σönceki ÷ Σşimdiki; BTC/ETH/USDT/USDC kendi oranlarıyla. İlk denemede `global.market_cap_change_percentage_24h_usd` kullanıldı ama gerçek veride −%4,13 verdi (TradingView −%1,26); ilk 250 toplamı −%1,16 verdi. Kullanıcının TradingView görüntüsüne yakın: BTC.D −0,17 ↔ −0,19, USDT.D +0,10 ↔ +0,107.
+- "+ Ekle": BTC.D, TOTAL3, VIX gibi göstergeler ya da sembol ("sol", "nvda"). Satırın üstüne gelince ✕ ile çıkarılır. Satıra tıklayınca grafik açılır; göstergeler TradingView görünümünde açılır (`S.dom` = `CRYPTOCAP:…`, `TVC:VIX` vb.).
+- Kayıt: `seviye.izleme`. İlk açılışta göstergeler + favoriler.
+- "Favori taraması" sağ panelden İşlemler panelinde Analiz'in yanındaki **Kurulumlar** sekmesine taşındı (`#kurView`, `scan.js` aynı `#scan` / `#scanNote` öğelerine yazar).
+
+## Hisseler (24 Kasım 2026)
+
+Kullanıcı ABD hisselerinin aramaya eklenmesini istedi ve sadece Binance kaynağını seçti (Yahoo geçmişi teklif edildi, istemedi).
+- `app.js` `loadTradfi`: açılışta `fapi/v1/exchangeInfo` çekilir; `underlyingType` COIN olmayan USDT kontratları (EQUITY, KR/HK/CN_EQUITY, PREMARKET, COMMODITY, FX, INDEX; Kasım 2026'da 238 hisse) `TRADFI`'ye ve arama listesine (`#syms`) eklenir. Etiket: bilinen adlar (`STOCK_NAMES`) + tür + "vadeli".
+- `setSym`: "nvda" yazınca NVDAUSDT'ye tamamlanır; TradFi sembolünde piyasa otomatik Vadeli olur. Kote para eki yoksa USDT eklenir.
+- Sınır: hisse kontratlarının geçmişi kısa (TSLA Ocak 2026, NVDA 26 Mart 2026'dan). Haftalık/aylık trendler, işlem fikri bölgeleri ve Turuncu (365 gün ister) çalışmaz ya da kısıtlı kalır. Kontratlar 7/24 işlem görür.
 
 ## Canlı fiyat yedeği
 
@@ -301,11 +340,13 @@ Sağ panelin en üstünde. Kullanıcının istekleri: senaryolar backtest ile de
 
 ### Bildirimler
 
-Panel başlığındaki "Bildirimleri aç" düğmesiyle açılır, ayar `notify`'da saklanır. Bildirimler hem tarayıcı bildirimi (izin verildiyse) hem sayfa içi uyarı kutusu olarak gelir.
+Panel başlığındaki "Bildirimleri aç" düğmesiyle açılır, ayar `notify`'da saklanır. Bildirimler sadece İşlemler panelindeki "Bildirimler" sekmesine ve zil ikonunun sayacına düşer. Sağ alttaki açılır kutular ve Windows/tarayıcı bildirimleri kullanıcı isteğiyle kaldırıldı (24 Kasım 2026).
 
 - **İyi giriş:** İyi kurulum (güçlü + piyasa yönünde + +50 $ oranı ≥ %60) tetiklendiğinde; giriş, stop ve +50/+100/+200 $ fiyatlarıyla. Açık grafik ve favoriler (4s, 1G) için. Aynı mum için bir kez.
 - **Bölgeye yaklaşma:** Açık grafikte senaryo "Yaklaşıyor" ya da "Bölgede" olunca (güçlü/zayıf yazar); favorilerde sadece güçlü kurulumlar için. Aynı bölge için en fazla 3 saatte bir.
 - **Yeni sinyal:** Sayfa açıldıktan sonra kapanan mumlarda çıkan her sinyal.
+- **Tekrar yok:** Gönderilen her bildirimin anahtarı ve başlık+metni `seviye.bildirimAnahtar`'da saklanır (son 3000). Aynısı sayfa yenilense ya da bekleme süresi dolsa da tekrar gönderilmez; "Temizle" bu kaydı silmez.
+- **Bildirim geçmişi (24 Kasım 2026):** Her `notify` çağrısı ekrandaki kutuya ek olarak `seviye.bildirimler`'e kaydedilir (en fazla 200; zaman, başlık, metin, piyasa/sembol/zaman dilimi). Üst şeritteki zil (`#bellBtn`) okunmamış sayısını gösterir ve İşlemler panelinde "Bildirimler" sekmesini açar. Sekme görülünce okundu sayılır (`seviye.bildirimOkundu`). "Grafiği aç" bildirimin grafiğini o zaman diliminde açar; "Temizle" listeyi siler. `scan.js` bildirimleri kendi sembol/zaman dilimini iletir.
 - **Sınır:** Sayfa açık olmalı. Tarayıcı bildirimi `localhost` (baslat.bat) ile güvenilir çalışır; `file://` açılışında genelde sadece sayfa içi uyarı görünür.
 
 ### Mor P (uzun vadeli düşüş)
@@ -338,7 +379,8 @@ Dikey çizgi sayısı (ETH, Haz–Kas 2026): 4s'te 24 → 6, 1s'te 105 → 21.
 Kullanıcının isteği: 2 ay ve üstü süren büyük yükseliş/düşüşlerin çoğundan önce yanan, geçmiş desenlere dayalı turuncu sinyal. Yükselişte mumun altında (↑), düşüşte üstünde (↓).
 
 - **Hesap:** Günlük kapanmış mumlardan (`htfRaw['1d']`, 2000 mum, 364 gün ısınma). `app.js` `computeHtf` sinyalleri açık grafiğin mumuna yerleştirir (gün içi grafikte o günün son mumu, haftalık/aylıkta içeren mum). Aynı yönde 30 günde en fazla bir kez.
-- **Alt (↑):** 1 yıllık dip son 30 günde, fiyat 1 yıllık tepenin en az %40 altında, günlük kapanış 10 günlük ortalamayı yukarı kesiyor.
+- **Alt (↑), 24 Kasım'dan itibaren (Grok önerisi 2, kullanıcı onayladı):** fiyat 1 yıllık tepenin en az %40 altında, son 15 günde (bugün hariç) günlük RSI(14) ≤ 25 ve günlük kapanış 10 günlük ortalamayı yukarı kesiyor. Önceki kural: 1 yıllık dip son 30 günde + aynı %40 ve ortalama şartı.
+- Bağımsız doğrulama (26 coin): yakalama 2018–22 %49 / 2023+ %48 / büyük 5 %50 (önceki %49 / %45 / %35); isabet %46 / %44 / %53 (önceki %37 / %39 / %54); 90 g medyan +%3 / +%8 / +%15 (önceki −%3 / +%9 / +%18; rastgele −%4 / −%5 / +%4). 2023+'da 90 günde ≥ %30 lehte hareket oranı %44 (önceki %52, rastgele %40). Grok'un sonuç dosyası: `GROK_TURUNCU_SONUC.md`.
 - **Üst (↓):** Fiyat 1 yıllık dibin en az %50 üstündeyken günlük kapanış 50 günlük ortalamayı aşağı kesiyor.
 - **İstatistik satırı:** Başarı = 90 gün içinde sinyal yönünde ≥ %30 hareket. Ortalama = 90 günlük getiri (sinyal yönünde). Fark = rastgele günlere göre puan.
 
@@ -353,6 +395,33 @@ Kullanıcının isteği: 2 ay ve üstü süren büyük yükseliş/düşüşlerin
 - Gradyan artırma modeli coin ayrımında iyi, zaman ayrımında (2022'ye kadar eğit, 2023+ test) rastgeleden kötü çıktı; kullanılmadı.
 - BTC'de üst sinyal boğa piyasasında sık çıkıyor (2024–2025'te her 50 günlük ortalama kırılımı). Filtreler yakalamayı düşürüp getiri farkını artırmadığı için eklenmedi.
 - Grok için görev: `GROK_TURUNCU.md`; test betiği `turuncu_test.js` (`node turuncu_test.js`, Binance'ten çeker).
+
+### Sarı üçgen (piyasa dönüşü, `turn.js`, 24 Kasım 2026)
+
+Kullanıcının isteği: piyasa ayıdan boğaya dönecekse altta, boğadan ayıya dönecekse üstte sarı üçgen; birkaç ay önceden uyarsın, bütün piyasalarda çalışsın. İlk sürümden sonra "uyuşmayan çok yer var, daha seçici ve isabetli olsun" ve "bütün tepe ve diplerle eşleşmesi zorunlu" dedi. Test, önceden uyaran kurallarda isabet ile yakalamanın zıt gittiğini gösterdi; tüm dönüşleri yüksek isabetle yakalamak ancak dönüşten sonra teyitle mümkün. Kullanıcı iki katmanı birlikte seçti (AskUserQuestion).
+
+Her ikisi o grafiğin kendi haftalık kapanmış mumlarından (`htfRaw['1w']`). `S` = o haftaya kadarki 52 haftalık yıllık oynaklıkların medyanı (nedensel). z = (log kapanış − log 40 haftalık ortalama) ÷ bu farkın son 156 haftalık standart sapması.
+
+**Ön uyarı (içi boş üçgen, tür `tri`):** Aynı yönde 13 haftada en fazla bir kez.
+- ▲: z ≤ −2, son 13 haftanın en düşük z'si ≤ −1,5 ve z o dipten ≥ 0,75 toparlanmış.
+- ▼: haftalık RSI 65'in altına iner ve log(fiyat) − log(3 yıllık dip) ≥ 3·S.
+
+**Teyit (dolu üçgen, tür `tric`):** Gerçek zamanlı zigzag, eşik th = max(log 1,2 ; S). Tepe/dipten K·th (K = 0,7) dönüş olunca çıkar. Üçgen o haftanın en uç mumuna (`at`) çizilir; liste/bildirim teyit mumunda (`i`).
+
+**Araştırma** (75 piyasa: Yahoo'dan 60 endeks/hisse/emtia/döviz, 1970'ten beri; Binance'ten 14 kripto; Bitstamp BTC 2011'den beri). Gerçek dönüş: haftalık log zigzag, eşik max(log 1,2 ; tüm geçmiş medyan oynaklık), bacak ≥ 12 hafta.
+
+| | Yakalama | İsabet / taban (2010 öncesi / sonrası) | Not |
+|---|---|---|---|
+| Ön ▲ | %22 | %72 / %18 (%77 / %63) | Kriptoda neredeyse hiç çıkmaz |
+| Ön ▼ | %31 | %32 / %16 (%32 / %33) | Kriptoda %86 (14 olay) |
+| Teyit ▲ | %85 | %70 (%74 / %63) | Dönüşten medyan 10 hafta sonra |
+| Teyit ▼ | %91 | %57 (%64 / %49) | Dönüşten medyan 14 hafta sonra |
+
+- Önceden uyaranlarda sınır: dipte %72 isabet sadece %12–27 yakalamayla; %45 yakalamada isabet ~%60. Tepede hiçbir kural (tekli/ikili 2.000+ kombinasyon) %34 isabeti geçmedi.
+- İstatistik satırları: "Ön uyarı" (26 hafta içinde dönüş), "Teyit" (teyit edilen uç gerçek dönüş). Panel: "Son dönüş teyidi" ve "Son ön uyarı".
+- Önceki ilk sürüm (yerine geçti): ▲ z ≤ −1,5 ya da RSI boğa uyumsuzluğu (yakalama %64, isabet %49); ▼ RSI ayı uyumsuzluğu ya da uzama sönmesi (%53, %23).
+- Grok için görev: `GROK_SARI_UCGEN.md`; test betiği `sari_test.js`.
+- Not: Stooq denemesi "Access denied" verdi ve kullanıcının İndirilenler klasöründe 13 baytlık bir `.tmp` dosyası bıraktı (24 Kasım 11:57).
 
 ### Sinyal başarısı (`evaluate`)
 
@@ -778,7 +847,7 @@ Sağ panelin en üstünde. Kullanıcının istekleri: senaryolar backtest ile de
 
 ### Bildirimler
 
-Panel başlığındaki "Bildirimleri aç" düğmesiyle açılır, ayar `notify`'da saklanır. Bildirimler hem tarayıcı bildirimi (izin verildiyse) hem sayfa içi uyarı kutusu olarak gelir.
+Panel başlığındaki "Bildirimleri aç" düğmesiyle açılır, ayar `notify`'da saklanır. Bildirimler sadece İşlemler panelindeki "Bildirimler" sekmesine ve zil ikonunun sayacına düşer. Sağ alttaki açılır kutular ve Windows/tarayıcı bildirimleri kullanıcı isteğiyle kaldırıldı (24 Kasım 2026).
 
 - **İyi giriş:** İyi kurulum (güçlü + piyasa yönünde + +50 $ oranı ≥ %60) tetiklendiğinde; giriş, stop ve +50/+100/+200 $ fiyatlarıyla. Açık grafik ve favoriler (4s, 1G) için. Aynı mum için bir kez.
 - **Bölgeye yaklaşma:** Açık grafikte senaryo "Yaklaşıyor" ya da "Bölgede" olunca (güçlü/zayıf yazar); favorilerde sadece güçlü kurulumlar için. Aynı bölge için en fazla 3 saatte bir.
@@ -815,7 +884,8 @@ Dikey çizgi sayısı (ETH, Haz–Kas 2026): 4s'te 24 → 6, 1s'te 105 → 21.
 Kullanıcının isteği: 2 ay ve üstü süren büyük yükseliş/düşüşlerin çoğundan önce yanan, geçmiş desenlere dayalı turuncu sinyal. Yükselişte mumun altında (↑), düşüşte üstünde (↓).
 
 - **Hesap:** Günlük kapanmış mumlardan (`htfRaw['1d']`, 2000 mum, 364 gün ısınma). `app.js` `computeHtf` sinyalleri açık grafiğin mumuna yerleştirir (gün içi grafikte o günün son mumu, haftalık/aylıkta içeren mum). Aynı yönde 30 günde en fazla bir kez.
-- **Alt (↑):** 1 yıllık dip son 30 günde, fiyat 1 yıllık tepenin en az %40 altında, günlük kapanış 10 günlük ortalamayı yukarı kesiyor.
+- **Alt (↑), 24 Kasım'dan itibaren (Grok önerisi 2, kullanıcı onayladı):** fiyat 1 yıllık tepenin en az %40 altında, son 15 günde (bugün hariç) günlük RSI(14) ≤ 25 ve günlük kapanış 10 günlük ortalamayı yukarı kesiyor. Önceki kural: 1 yıllık dip son 30 günde + aynı %40 ve ortalama şartı.
+- Bağımsız doğrulama (26 coin): yakalama 2018–22 %49 / 2023+ %48 / büyük 5 %50 (önceki %49 / %45 / %35); isabet %46 / %44 / %53 (önceki %37 / %39 / %54); 90 g medyan +%3 / +%8 / +%15 (önceki −%3 / +%9 / +%18; rastgele −%4 / −%5 / +%4). 2023+'da 90 günde ≥ %30 lehte hareket oranı %44 (önceki %52, rastgele %40). Grok'un sonuç dosyası: `GROK_TURUNCU_SONUC.md`.
 - **Üst (↓):** Fiyat 1 yıllık dibin en az %50 üstündeyken günlük kapanış 50 günlük ortalamayı aşağı kesiyor.
 - **İstatistik satırı:** Başarı = 90 gün içinde sinyal yönünde ≥ %30 hareket. Ortalama = 90 günlük getiri (sinyal yönünde). Fark = rastgele günlere göre puan.
 

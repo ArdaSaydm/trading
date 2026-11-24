@@ -6,7 +6,7 @@
 <title>Seviye · Grafik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261124d">
+<link rel="stylesheet" href="style.css?v=20261124q">
 </head>
 <body>
 <header>
@@ -23,6 +23,7 @@
         <button data-v="5m">5d</button><button data-v="15m">15d</button><button data-v="1h">1s</button><button data-v="4h">4s</button><button data-v="1d">1G</button><button data-v="1w">1H</button><button data-v="1M">1A</button>
       </div>
       <div class="seg"><button id="autoBtn" title="Otomatik fiyat ölçeği: grafik görünen mumlara göre kendini ölçekler">Auto</button><button id="logBtn" title="Logaritmik fiyat ölçeği">Log</button></div>
+      <button class="bell" id="bellBtn" title="Bildirimler" aria-label="Bildirimler"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0-6 6v3.6L4.3 16h15.4L18 12.6V9a6 6 0 0 0-6-6zM9.8 18a2.2 2.2 0 0 0 4.4 0"/></svg><span class="bbadge" id="bellBadge" hidden></span></button>
       <span class="live"><span class="dot" id="dot"></span><span id="liveTxt">Bağlanıyor</span></span>
     </div>
   </div>
@@ -77,7 +78,7 @@
     <div class="thead">
       <button class="chip tg" id="tradesToggle" aria-label="İşlemler panelini aç/kapat">▾</button>
       <h2>İşlemler</h2>
-      <div class="seg sm" id="tradesTabs" role="group" aria-label="İşlemler görünümü"><button data-v="pos">Pozisyonlar</button><button data-v="hist">Geçmiş</button><button data-v="ana">Analiz</button></div>
+      <div class="seg sm" id="tradesTabs" role="group" aria-label="İşlemler görünümü"><button data-v="pos">Pozisyonlar</button><button data-v="ord">Açık emirler</button><button data-v="hist">Geçmiş</button><button data-v="ana">Analiz</button><button data-v="kur">Kurulumlar</button><button data-v="not">Bildirimler</button></div>
       <span id="tradesTotal" class="tot"></span>
       <span class="sp"></span>
       <button class="chip" id="tradeAddBtn">İşlem ekle</button>
@@ -101,6 +102,7 @@
       <p class="note down" id="hlErr"></p>
     </form>
     <div class="tview" id="posView">
+    <div id="acct"></div>
     <p id="hlStatus" class="note"></p>
     <div class="tscroll">
       <table class="ttable">
@@ -109,19 +111,27 @@
       </table>
     </div>
     </div>
+    <div class="tview" id="ordView" hidden></div>
+    <div class="tview" id="notView" hidden></div>
+    <div class="tview" id="kurView" hidden>
+      <p class="note">Favori taraması <span id="scanNote"></span> · Favorilerin 4 saatlik ve günlük grafiklerinde 5 dakikada bir short/long senaryoları aranır; güçlü kurulum bölgesine yaklaşınca ve %60 eşiğini geçen giriş oluşunca bildirim gelir. Tıklayınca grafik açılır.</p>
+      <ul class="ev scan" id="scan"></ul>
+    </div>
     <div class="tview" id="histView" hidden></div>
     <div class="tview" id="anaView" hidden></div>
   </section>
   </div>
   <aside>
+    <section class="watchbox">
+      <h2 class="h2row">İzleme listesi <button class="chip" id="watchAddBtn" title="Sembol ekle">+ Ekle</button></h2>
+      <form id="watchForm" class="wform" hidden><input id="watchIn" list="watchOpts" placeholder="BTC.D, TOTAL3, VIX, SOL, NVDA…" autocomplete="off" spellcheck="false" aria-label="Eklenecek sembol"><button class="btn sm" type="submit">Ekle</button></form>
+      <datalist id="watchOpts"></datalist>
+      <div class="wscroll"><table class="wt"><thead><tr><th>Sembol</th><th>Son</th><th>Değ.</th><th>Değ.%</th><th></th></tr></thead><tbody id="watch"></tbody></table></div>
+      <p class="note" id="watchNote"></p>
+    </section>
     <section>
       <h2 class="h2row">İşlem fikri <button class="chip" id="notifyBtn"></button></h2>
       <div id="idea"><p class="empty">Hesaplanıyor…</p></div>
-    </section>
-    <section>
-      <h2>Favori taraması <span class="note" id="scanNote"></span></h2>
-      <ul class="ev scan" id="scan"></ul>
-      <p class="note">Favorilerin 4 saatlik ve günlük grafiklerinde 5 dakikada bir aynı short/long senaryoları aranır. Bildirimler açıksa güçlü kurulum bölgesine yaklaşınca ve %60 eşiğini geçen bir giriş oluşunca haber verilir. Tıklayınca grafik açılır.</p>
     </section>
     <section>
       <h2>Durum</h2>
@@ -138,14 +148,6 @@
     <section>
       <h2>Destek ve direnç</h2>
       <table><thead><tr><th>Tür</th><th>Fiyat</th><th>Temas</th><th>Uzaklık</th></tr></thead><tbody id="lvl"></tbody></table>
-    </section>
-    <section>
-      <h2>Pozisyon hesabı</h2>
-      <div class="pair">
-        <label>Hesap (USDT)<input type="number" id="account" min="1" step="any" inputmode="decimal"></label>
-        <label>İşlem başı risk %<input type="number" id="riskPct" min="0.1" max="100" step="0.1" inputmode="decimal"></label>
-      </div>
-      <ul class="pos" id="pos"></ul>
     </section>
     <section>
       <h2>Çizimler <span class="note">(göz ikonuyla gizle/göster)</span></h2>
@@ -178,7 +180,8 @@
           <dt><i class="sw big"></i>Yeşil çizgi</dt><dd>Satış klimaksı (kapitülasyon): RSI 22 ya da altı, hacim ortalamanın 2,5 katı, kırmızı mum. Sert tepki ihtimali. Dikey çizgiler 40 mumda en fazla bir kez çıkar.</dd>
           <dt><i class="sw react"></i>Tepki</dt><dd>Aday işaret: dip/tepe + aşırı satım/alım, onay bekleniyor. Onay gelirse Buy/Sell olur.</dd>
           <dt><i class="sw rev"></i>Sarı çizgi</dt><dd>Yön değişebilir: güçlü RSI uyumsuzluğu (önceki tepede RSI 70+, dipte 30−, fark 8 puandan fazla).</dd>
-          <dt><i class="sw orange"></i>Turuncu</dt><dd>Büyük (2 ay ve üstü, %30+) dönüş deseni, günlük mumdan. Altta: 1 yıllık dip son 30 günde, fiyat 1 yıllık tepenin en az %40 altında ve günlük kapanış 10 günlük ortalamanın üstüne çıktı. Üstte: fiyat 1 yıllık dibin en az %50 üstündeyken günlük kapanış 50 günlük ortalamanın altına indi. Aynı yönde 30 günde en fazla bir kez.</dd>
+          <dt><i class="sw tri"></i>Sarı üçgen</dt><dd>Piyasa dönüşü, o grafiğin kendi haftalık mumlarından (kripto, hisse, endeks, emtia, döviz). Altta: ayıdan boğaya, üstte: boğadan ayıya. <b>Dolu üçgen = teyit:</b> fiyat tepe/dipten, o piyasanın büyük hareket eşiğinin %70'i kadar döndü; üçgen tepe/dibin üstüne/altına konur ama teyit gelince görünür (genelde 2–3 ay sonra). Geçmişte dönüşlerin %84–91'ini yakaladı, isabet dipte %70, tepede %57. <b>İçi boş üçgen = ön uyarı:</b> seyrek ama önceden. Dipte isabet %72 (dönüşlerin %22'si), tepede %32 (%31). En az 2 yıllık haftalık veri gerekir.</dd>
+          <dt><i class="sw orange"></i>Turuncu</dt><dd>Büyük (2 ay ve üstü, %30+) dönüş deseni, günlük mumdan. Altta: fiyat 1 yıllık tepenin en az %40 altında, son 15 günde günlük RSI 25 ya da altına inmiş ve günlük kapanış 10 günlük ortalamanın üstüne çıktı. Üstte: fiyat 1 yıllık dibin en az %50 üstündeyken günlük kapanış 50 günlük ortalamanın altına indi. Aynı yönde 30 günde en fazla bir kez.</dd>
           <dt><i class="sw tr"></i>Trend çizgileri</dt><dd>Aylık, haftalık ve günlük mumlardaki tepe/diplerden çizilir. Sadece kırılmamış ve fiyata yakın olanlar görünür.</dd>
           <dt><i class="sw pat"></i>Formasyonlar</dt><dd>Grafikte yalnızca şu an oluşan ya da son 30 mumda kırılanlar görünür. Kesikli çizgi boyun çizgisi, "Hedef" ölçülen hareket hedefidir.</dd>
           <dt><i class="sw para"></i>Parabolik yay</dt><dd>Uzun vadeli kavisli destek ya da direnç. Etikette bugünkü değeri yazar; kırılırsa ok çıkar.</dd>
@@ -189,7 +192,7 @@
     </section>
     <section>
       <p class="note" id="storeInfo"></p>
-      <p class="note">Veri: Binance herkese açık API (anahtar gerekmez). Altın, gümüş, bakır ve Brent Binance vadeli TradFi kontratlarıdır. Dominans değerleri CoinGecko'dan. Yatırım tavsiyesi değildir.</p>
+      <p class="note">Veri: Binance herkese açık API (anahtar gerekmez). Altın, gümüş, bakır, Brent ve hisseler (NVDA, AAPL, TSLA, SPY…) Binance vadeli TradFi kontratlarıdır; hisse kontratlarının geçmişi 2026'dan başlar, bu yüzden haftalık/aylık analizler kısıtlıdır. Dominans değerleri CoinGecko'dan. Yatırım tavsiyesi değildir.</p>
       <p class="note">Grafik kütüphanesi: TradingView Lightweight Charts™, Copyright (c) 2025 TradingView, Inc. <a href="https://www.tradingview.com/" target="_blank" rel="noopener">tradingview.com</a></p>
     </section>
   </aside>
@@ -206,19 +209,21 @@
   <div class="ggrid" id="guideGrid"></div>
 </dialog>
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="store.js?v=20261124d"></script>
-<script src="indicators.js?v=20261124d"></script>
-<script src="patterns.js?v=20261124d"></script>
-<script src="analysis.js?v=20261124d"></script>
-<script src="zones.js?v=20261124d"></script>
-<script src="scenario.js?v=20261124d"></script>
-<script src="orange.js?v=20261124d"></script>
-<script src="guide.js?v=20261124d"></script>
-<script src="drawings.js?v=20261124d"></script>
-<script src="trades.js?v=20261124d"></script>
-<script src="history.js?v=20261124d"></script>
-<script src="favs.js?v=20261124d"></script>
-<script src="scan.js?v=20261124d"></script>
-<script src="app.js?v=20261124d"></script>
+<script src="store.js?v=20261124q"></script>
+<script src="indicators.js?v=20261124q"></script>
+<script src="patterns.js?v=20261124q"></script>
+<script src="analysis.js?v=20261124q"></script>
+<script src="zones.js?v=20261124q"></script>
+<script src="scenario.js?v=20261124q"></script>
+<script src="orange.js?v=20261124q"></script>
+<script src="turn.js?v=20261124q"></script>
+<script src="guide.js?v=20261124q"></script>
+<script src="drawings.js?v=20261124q"></script>
+<script src="trades.js?v=20261124q"></script>
+<script src="history.js?v=20261124q"></script>
+<script src="favs.js?v=20261124q"></script>
+<script src="scan.js?v=20261124q"></script>
+<script src="watch.js?v=20261124q"></script>
+<script src="app.js?v=20261124q"></script>
 </body>
 </html>

@@ -275,7 +275,7 @@ SV.analysis = (() => {
   function evaluate(bars, ctx, sigs) {
     const A = ctx.atr, st = {}, B = baseline(bars, A), n = bars.length;
     for (const s of sigs) {
-      if (s.type === 'rev' || s.type === 'orange') continue;
+      if (s.type === 'rev' || s.type === 'orange' || s.type === 'tri' || s.type === 'tric') continue;
       const o = st[s.type] || (st[s.type] = { n: 0, win: 0, r: 0, base: 0, open: 0, unit: s.type === 'ltb' ? '%' : 'R' });
       let v, b;
       if (s.type === 'ltb') {

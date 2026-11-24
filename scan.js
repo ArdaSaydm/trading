@@ -69,10 +69,10 @@ SV.scan = (() => {
       if (same) continue;
       const pct = `%${Math.round(r.sc.stats.p50 * 100)}`;
       if (r.sc.state === 'triggered' && SV.scen.good(r.sc)) {
-        D.notify(`${name}: iyi ${sh ? 'short' : 'long'} girişi`, `Giriş ${SV.fmt(p.entry)} · stop ${SV.fmt(p.stop)} (−50 $) · +50 $ ${SV.fmt(p.lv[0])} · +100 $ ${SV.fmt(p.lv[1])} · +200 $ ${SV.fmt(p.lv[2])}. Geçmişte +50 $ oranı ${pct}, piyasa yönünde.`, `e${r.f.s}${r.tf}${r.key}${r.t}`, 864e5);
+        D.notify(`${name}: iyi ${sh ? 'short' : 'long'} girişi`, `Giriş ${SV.fmt(p.entry)} · stop ${SV.fmt(p.stop)} (−50 $) · +50 $ ${SV.fmt(p.lv[0])} · +100 $ ${SV.fmt(p.lv[1])} · +200 $ ${SV.fmt(p.lv[2])}. Geçmişte +50 $ oranı ${pct}, piyasa yönünde.`, `e${r.f.s}${r.tf}${r.key}${r.t}`, 864e5, { m: r.f.m, s: r.f.s, tf: r.tf });
       } else if (SV.scen.good(r.sc) && (r.sc.state === 'near' || r.sc.state === 'inzone')) {
         const edge = sh ? r.sc.zone.lo : r.sc.zone.hi;
-        D.notify(`${name}: iyi ${sh ? 'short' : 'long'} bölgesine yaklaştı`, `Fiyat ${SV.fmt(r.price)}, bölge ${SV.fmt(edge)} (${r.sc.zone.names.join(' + ')}). Geçmişte ${pct}. ${sh ? 'Bölgenin altında' : 'Bölgenin üstünde'} kapanış gelirse giriş oluşur.`, `z${r.f.s}${r.tf}${r.key}${Math.round(edge)}`);
+        D.notify(`${name}: iyi ${sh ? 'short' : 'long'} bölgesine yaklaştı`, `Fiyat ${SV.fmt(r.price)}, bölge ${SV.fmt(edge)} (${r.sc.zone.names.join(' + ')}). Geçmişte ${pct}. ${sh ? 'Bölgenin altında' : 'Bölgenin üstünde'} kapanış gelirse giriş oluşur.`, `z${r.f.s}${r.tf}${r.key}${Math.round(edge)}`, undefined, { m: r.f.m, s: r.f.s, tf: r.tf });
       }
     }
   }

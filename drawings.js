@@ -302,6 +302,22 @@ SV.overlay = ({ chart, series, stage, canvas, get }) => {
         text(up ? '↑' : '↓', x, up ? by + h / 2 : by - h / 2, '#2b1700', 'center', 700, 13);
       }
     }
+    if (res && res.signals && S.layers.tri) {
+      for (const s of res.signals) {
+        if (s.type !== 'tri' && s.type !== 'tric') continue;
+        const bi = s.type === 'tric' && s.at != null ? s.at : s.i, x = X(bi);
+        if (x == null || x < -20 || x > W + 20) continue;
+        const up = s.dir > 0, y = Y(up ? bars[bi].l : bars[bi].h);
+        if (y == null) continue;
+        const at = (t, d) => res.signals.some(o => o.i === bi && o.type === t && (d == null || o.dir === d));
+        const off = up ? (S.layers.bs && at('buy') ? 30 : 0) + (S.layers.ltb && at('ltb') ? 32 : 0) + (S.layers.react && at('react', 1) ? 26 : 0) + (S.layers.orange && at('orange', 1) ? 32 : 0)
+          : (S.layers.bs && at('sell') ? 30 : 0) + (S.layers.zone && at('zsell') ? 26 : 0) + (S.layers.react && at('react', -1) ? 26 : 0) + (S.layers.orange && at('orange', -1) ? 32 : 0);
+        const tip = up ? y + 6 + off : y - 6 - off, base = up ? tip + 15 : tip - 15;
+        g.beginPath(); g.moveTo(x, tip); g.lineTo(x - 8, base); g.lineTo(x + 8, base); g.closePath();
+        if (s.type === 'tric') { g.fillStyle = '#f5c518'; g.strokeStyle = 'rgba(40,30,0,.75)'; g.lineWidth = 1; g.fill(); g.stroke(); }
+        else { g.fillStyle = 'rgba(12,14,18,.75)'; g.strokeStyle = '#f5c518'; g.lineWidth = 2; g.fill(); g.stroke(); }
+      }
+    }
     if (res && res.signals && S.layers.react) {
       for (const s of res.signals) {
         if (s.type !== 'react') continue;

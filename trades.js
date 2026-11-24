@@ -3,7 +3,7 @@ window.SV = window.SV || {};
 SV.trades = (() => {
   const HL = 'https://api.hyperliquid.xyz/info';
   const XYZ = { 'xyz:GOLD': 'XAUUSDT', 'xyz:SILVER': 'XAGUSDT', 'xyz:COPPER': 'COPPERUSDT', 'xyz:BRENTOIL': 'BZUSDT', 'xyz:CL': 'CLUSDT' };
-  let D = null, manual = [], hl = { address: '', positions: [], orders: [], mids: {}, fee: 0.00045, err: '', at: 0, busy: false };
+  let D = null, manual = [], hl = { address: '', positions: [], orders: [], mids: {}, fee: 0.00045, err: '', at: 0, busy: false, acct: null, spot: null, spotAt: 0, spotMeta: null, spotMetaAt: 0, mode: '', modeAt: 0, open: [] };
   let tabNow = 'pos', closeFor = null, tickers = {}, lines = [], linesKey = '', hlTimer = null, tkTimer = null, lastTick = 0, open = true, form = null;
   const $ = id => document.getElementById(id);
   const num = (x, d = 2) => (x >= 0 ? '+' : '−') + Math.abs(x).toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -65,6 +65,29 @@ SV.trades = (() => {
         }
       }
       hl.positions = pos;
+      const acc = { value: 0, ntl: 0, margin: 0, maint: 0, withdraw: 0, upnl: 0, posMargin: 0, iso: 0 };
+      for (const st of [main, xyz]) {
+        if (!st) continue;
+        if (st.marginSummary) {
+          acc.value += +st.marginSummary.accountValue || 0;
+          acc.ntl += +st.marginSummary.totalNtlPos || 0;
+          acc.margin += +st.marginSummary.totalMarginUsed || 0;
+        }
+        acc.maint += +st.crossMaintenanceMarginUsed || 0;
+        acc.withdraw += +st.withdrawable || 0;
+        for (const ap of st.assetPositions || []) {
+          acc.upnl += +ap.position.unrealizedPnl || 0;
+          acc.posMargin += +ap.position.marginUsed || 0;
+          if (ap.position.leverage && ap.position.leverage.type === 'isolated') acc.iso += +ap.position.marginUsed || 0;
+        }
+      }
+      hl.acct = acc;
+      if (!hl.mode || Date.now() - hl.modeAt > 600000) { hl.modeAt = Date.now(); hlPost({ type: 'userAbstraction', user: u }).then(m => { hl.mode = typeof m === 'string' ? m : ''; render(); }).catch(() => {}); }
+      if (Date.now() - hl.spotAt > (/unified|portfolio/i.test(hl.mode) ? 8000 : 40000)) refreshSpot(u);
+      hl.open = [...(orders || []), ...(ordersX || [])].map(o => {
+        const m = mapCoin(o.coin), trig = +o.triggerPx || 0, lim = +o.limitPx || 0;
+        return { coin: o.coin, symbol: m ? m.symbol : null, market: m ? m.market : null, buy: o.side === 'B', type: o.orderType || 'Limit', px: o.isTrigger && trig ? trig : lim, limit: lim, trigger: o.isTrigger ? trig : null, cond: o.triggerCondition || '', sz: +o.sz, orig: +o.origSz || +o.sz, reduce: !!o.reduceOnly, tpsl: !!o.isPositionTpsl, t: o.timestamp, oid: o.oid };
+      }).sort((a, b) => b.t - a.t);
       hl.orders = [...(orders || []), ...(ordersX || [])].filter(o => o.isTrigger || o.isPositionTpsl).map(o => ({
         coin: o.coin, px: +(o.triggerPx || o.limitPx), kind: /take profit/i.test(o.orderType || '') ? 'TP' : /stop/i.test(o.orderType || '') ? 'SL' : (o.orderType || 'Emir')
       }));
@@ -76,6 +99,96 @@ SV.trades = (() => {
     }
     hl.busy = false;
     render(); syncLines();
+  }
+
+  async function refreshSpot(u) {
+    hl.spotAt = Date.now();
+    try {
+      if (!hl.spotMeta || Date.now() - hl.spotMetaAt > 600000) { hl.spotMeta = await hlPost({ type: 'spotMetaAndAssetCtxs' }); hl.spotMetaAt = Date.now(); }
+      const st = await hlPost({ type: 'spotClearinghouseState', user: u });
+      const [meta, ctxs] = hl.spotMeta || [{ tokens: [], universe: [] }, []];
+      const idx = {}, px = {};
+      for (const t of meta.tokens || []) idx[t.name] = t.index;
+      (meta.universe || []).forEach((m, j) => { if (m.tokens && m.tokens[1] === 0 && ctxs[j]) px[m.tokens[0]] = +(ctxs[j].markPx || ctxs[j].midPx) || 0; });
+      let usdc = 0, other = 0, hold = 0;
+      for (const b of (st && st.balances) || []) {
+        const q = +b.total || 0;
+        if (!q) continue;
+        if (b.coin === 'USDC') { usdc += q; hold += +b.hold || 0; }
+        else other += q * (px[idx[b.coin]] || 0);
+      }
+      hl.spot = { usdc, other, hold };
+    } catch (e) {}
+    render();
+  }
+
+  function acctHtml(list) {
+    const k = (h, v, sub, c = '') => `<div class="kpi"><span>${h}</span><b class="num ${c}">${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    const plain = x => `${x.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+    const cls = v => v >= 0 ? 'up' : 'down';
+    if (hl.address && hl.acct && !hl.mode && Date.now() - hl.modeAt < 6000) return '<div class="kpis acct"><div class="kpi"><span>Toplam bakiye</span><b>…</b><small>yükleniyor</small></div></div>';
+    if (hl.address && hl.acct) {
+      const a = hl.acct, hp = list.filter(p => p.src === 'Hyperliquid');
+      let live = 0, ntl = 0;
+      for (const p of hp) { const s = stats(p); live += s.px != null ? s.open : p.upnl || 0; ntl += (s.px != null ? s.px : p.entry) * p.qty; }
+      const pct = x => `%${(x * 100).toFixed(1).replace('.', ',')}`;
+      if (/unified|portfolio/i.test(hl.mode)) {
+        if (!hl.spot) return '<div class="kpis acct"><div class="kpi"><span>Toplam bakiye</span><b>…</b><small>yükleniyor</small></div></div>';
+        const sp = hl.spot, total = sp.usdc + sp.other + live - a.upnl, ordHold = Math.max(0, sp.hold - a.posMargin), free = Math.max(0, sp.usdc - sp.hold);
+        const coll = sp.usdc - a.iso, base = total - live, nOrd = hl.open.filter(o => !o.tpsl && !o.reduce).length;
+        return `<div class="kpis acct">
+          ${k('Toplam bakiye', plain(total), `birleşik hesap${sp.other ? ` · USDC ${plain(sp.usdc)} + diğer ${plain(sp.other)}` : ''}`)}
+          ${k('Açık K/Z', usd(live), base > 0 && hp.length ? `${num(live / base * 100)}% (bakiyeye göre)` : 'açık pozisyon yok', cls(live))}
+          ${k('Pozisyon teminatı', plain(a.posMargin), total > 0 ? `bakiyenin ${pct(a.posMargin / total)}` : '')}
+          ${k('Emirlere ayrılan', plain(ordHold), nOrd ? `${nOrd} açık emir · bakiyeden düşülmez` : 'açık emir yok')}
+          ${k('Kullanılabilir', plain(free), 'teminat ve emirler dışında')}
+          ${k('Pozisyon büyüklüğü', plain(ntl), total > 0 && ntl ? `efektif kaldıraç ${(ntl / total).toFixed(2).replace('.', ',')}x` : '')}
+          ${k('Teminat oranı', coll > 0 && a.maint ? pct(a.maint / coll) : '—', 'bakım teminatı / teminat; %100 olursa likidasyon', coll > 0 && a.maint / coll >= 0.5 ? 'down' : '')}
+        </div>`;
+      }
+      const perp = a.value - a.upnl + live, sp = hl.spot ? hl.spot.usdc + hl.spot.other : 0, total = perp + sp;
+      const base = perp - live;
+      return `<div class="kpis acct">
+        ${k('Toplam bakiye', plain(total), hl.spot ? `perp ${plain(perp)} + spot ${plain(sp)}` : `perp hesabı · spot yükleniyor`)}
+        ${k('Açık K/Z', usd(live), base > 0 ? `${num(live / base * 100)}% (bakiyeye göre)` : '', cls(live))}
+        ${k('Kullanılan teminat', plain(a.margin), perp > 0 ? `perp bakiyesinin %${(a.margin / perp * 100).toFixed(1).replace('.', ',')}` : '')}
+        ${k('Çekilebilir', plain(a.withdraw), 'perp hesabından')}
+        ${k('Pozisyon büyüklüğü', plain(ntl), perp > 0 ? `efektif kaldıraç ${(ntl / perp).toFixed(2).replace('.', ',')}x` : '')}
+        ${k('Teminat oranı', perp > 0 ? `%${(a.maint / perp * 100).toFixed(1).replace('.', ',')}` : '—', 'bakım teminatı / bakiye; %100 olursa likidasyon', perp > 0 && a.maint / perp >= 0.5 ? 'down' : '')}
+      </div>`;
+    }
+    return '';
+  }
+
+  function renderOrders() {
+    const box = $('ordView');
+    if (!box) return;
+    const list = hl.open || [];
+    const n = list.length, tb = $('tradesTabs').querySelector('[data-v="ord"]');
+    if (tb) tb.textContent = n ? `Açık emirler (${n})` : 'Açık emirler';
+    if (!hl.address) { box.innerHTML = '<p class="note">Açık emirler Hyperliquid adresinden okunur. "Hyperliquid" düğmesiyle adresini bağla.</p>'; return; }
+    if (!n) { box.innerHTML = `<p class="note">${hl.at ? 'Açık emir yok.' : 'Yükleniyor…'}</p>`; return; }
+    const TYPE = { Limit: 'Limit', 'Stop Market': 'Stop market', 'Stop Limit': 'Stop limit', 'Take Profit Market': 'Kâr al (market)', 'Take Profit Limit': 'Kâr al (limit)' };
+    const dt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    let tot = 0;
+    const rows = list.map(o => {
+      const mid = +hl.mids[o.coin] || null, val = o.sz * (o.limit || o.px);
+      if (!o.reduce) tot += val;
+      const dist = mid ? (o.px - mid) / mid * 100 : null;
+      return `<tr>
+        <td><button class="lnk" data-ogo="${esc(o.coin)}" ${o.symbol ? '' : 'disabled'}>${esc(o.coin)}</button></td>
+        <td><span class="tag ${o.buy ? 'buy' : 'sell'}">${o.buy ? 'Alış' : 'Satış'}</span></td>
+        <td>${esc(TYPE[o.type] || o.type)}${o.tpsl ? ' <small>poz. TP/SL</small>' : ''}${o.reduce ? ' <small>sadece azalt</small>' : ''}</td>
+        <td class="num">${SV.fmt(o.px)}${o.trigger && o.limit && Math.abs(o.limit - o.trigger) > 1e-12 ? `<small>limit ${SV.fmt(o.limit)}</small>` : ''}</td>
+        <td class="num">${qtyTxt(o.sz)}${o.orig > o.sz ? `<small>ilk ${qtyTxt(o.orig)}</small>` : ''}</td>
+        <td class="num">${val.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} $</td>
+        <td class="num">${mid ? SV.fmt(mid) : '—'}</td>
+        <td class="num">${dist != null ? num(dist) + '%' : '—'}</td>
+        <td>${o.t ? dt.format(o.t) : ''}</td>
+      </tr>`;
+    }).join('');
+    box.innerHTML = `<p class="note">Bekleyen emirler; gerçekleşmedikçe bakiyeyi ve K/Z'yi etkilemez. Yeni pozisyon açabilecek emirlerin toplam değeri: <b class="num">${tot.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} $</b></p>
+      <div class="tscroll"><table class="ttable"><thead><tr><th>Sembol</th><th>Yön</th><th>Tür</th><th>Fiyat</th><th>Miktar</th><th>Değer</th><th>Güncel</th><th>Uzaklık</th><th>Zaman</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   async function refreshTickers() {
@@ -209,11 +322,15 @@ SV.trades = (() => {
     for (const b of $('tradesTabs').children) b.setAttribute('aria-pressed', b.dataset.v === t);
     $('posView').hidden = t !== 'pos';
     $('histView').hidden = t !== 'hist';
+    $('ordView').hidden = t !== 'ord';
+    $('notView').hidden = t !== 'not';
+    $('kurView').hidden = t !== 'kur';
     $('anaView').hidden = t !== 'ana';
     $('tradesTotal').hidden = t !== 'pos';
     if (!open && !quiet) { open = true; SV.store.set('seviye.islemlerAcik', true); $('tradesToggle').textContent = '▾'; applyHeight(); }
     render(true);
     SV.history.render();
+    if (D.onTab && (open || !quiet)) D.onTab(t);
   }
 
   function render(force) {
@@ -242,6 +359,8 @@ SV.trades = (() => {
         <td class="acts">${p.src === 'Hyperliquid' ? '' : `${p.done ? '' : `<button class="chip" data-close="${esc(p.id)}">Kısmi kapat</button>`}<button class="del" data-del="${esc(p.id)}" title="Sil">✕</button>`}</td>
       </tr>${closeFor === p.id ? closeRow(p, s) : ''}`;
     }).join('');
+    $('acct').innerHTML = acctHtml(list);
+    renderOrders();
     $('tradesTotal').innerHTML = have ? `Toplam net: <b class="num ${total >= 0 ? 'up' : 'down'}">${usd(total)}</b>` : '';
     $('tradesBody').innerHTML = rows || `<tr><td colspan="11" class="empty">Henüz işlem yok. "İşlem ekle" ile elle girebilir ya da Hyperliquid adresini bağlayabilirsin.</td></tr>`;
     const st = $('hlStatus');
@@ -394,11 +513,12 @@ SV.trades = (() => {
     SV.history.init({ focus: D.focus, redraw: D.resized });
     initResize();
     tabNow = SV.store.get('seviye.islemSekme', 'pos');
-    setTab(['pos', 'hist', 'ana'].includes(tabNow) ? tabNow : 'pos', true);
+    setTab(['pos', 'ord', 'hist', 'ana', 'kur', 'not'].includes(tabNow) ? tabNow : 'pos', true);
+    $('ordView').addEventListener('click', e => { const b = e.target.closest('[data-ogo]'); if (!b) return; const m = mapCoin(b.dataset.ogo); if (m) D.goTo(m.market, m.symbol); });
     if (hl.address) { SV.history.setAddress(hl.address); refreshHL(); hlTimer = setInterval(refreshHL, 8000); }
     refreshTickers(); tkTimer = setInterval(refreshTickers, 10000);
     render();
   }
 
-  return { init, tick, render, syncLines, refreshTickers, stats, mapCoin, closedManual, post: hlPost, tab: () => tabNow, util: { num, usd, esc, qtyTxt }, _state: () => ({ manual, hl }) };
+  return { init, tick, render, syncLines, refreshTickers, stats, mapCoin, closedManual, post: hlPost, tab: () => tabNow, show: t => setTab(t), isOpen: () => open, util: { num, usd, esc, qtyTxt }, _state: () => ({ manual, hl }) };
 })();
