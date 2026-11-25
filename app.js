@@ -29,7 +29,7 @@ const LAYERS = [
 const EYE_ON = '<svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 
-let bars = [], res = null, priceLines = [], ws = null, wsToken = 0, retry = 0, reTimer = null, anTimer = null, C = {};
+let barsKey = '', bars = [], res = null, priceLines = [], ws = null, wsToken = 0, retry = 0, reTimer = null, anTimer = null, C = {};
 let lastMsg = 0, sigByIndex = new Map(), htf = {}, htfRaw = {}, htfKey = '', htfAt = 0, patSel = null, zzNow = null;
 const HTF = [['1M', 2, 0.30], ['1w', 3, 0.15], ['1d', 5, 0.08]];
 
@@ -155,6 +155,7 @@ function focusTrade(market, symbol, t0, t1) {
 async function load() {
   const my = ++wsToken;
   closeWs(); stopPoll(); wsFails = 0;
+  idea = null;
   syncUi();
   overlay.load(S.symbol);
   patSel = null;
@@ -167,6 +168,7 @@ async function load() {
     altTried = false;
     if (!data.length) throw Object.assign(new Error('Bu parite için veri yok'), { fatal: true });
     bars = data;
+    barsKey = S.market + S.symbol + S.interval;
     const prec = SV.prec(bars[bars.length - 1].c);
     candle.applyOptions({ priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } });
     candle.setData(bars.map(toC));
@@ -425,63 +427,57 @@ async function loadBtcMonthly() {
 }
 function scenStateTxt(sc, key) {
   const sh = key === 'short';
-  if (sc.state === 'triggered') return ['go', `Giriş oluştu · ${sc.ago ? sc.ago + ' mum önce' : 'son kapanan mumda'}, ${SV.fmt(sc.plan.entry)} fiyatından${sc.tier ? ` · ${['', '$50', '$100', '$200'][sc.tier]} kademesi görüldü` : ''}`];
+  if (sc.state === 'triggered') return ['go', `Limit doldu · ${sc.live ? 'bu mumda' : sc.ago ? sc.ago + ' mum önce' : 'son kapanan mumda'}, ${SV.fmt(sc.plan.entry)} fiyatından${sc.tier ? ` · ${['', '$50', '$100', '$200'][sc.tier]} kademesi görüldü` : ''}`];
   if (sc.state === 'inzone') return ['in', `Bölgede · mum bölgenin ${sh ? 'altında' : 'üstünde'} kapanırsa giriş oluşur`];
-  if (sc.state === 'near') return ['near', `Yaklaşıyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
+  if (sc.state === 'near') return ['near', `Yaklaşıyor · limite ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
   if (sc.state === 'broken') return ['off', `Bölge kırıldı · fiyat bölgenin ${sh ? 'üstünde' : 'altında'}, senaryo geçersiz`];
   if (sc.state === 'late') return ['off', 'Ret mumu bölgeden çok uzakta kapattı · giriş için geç'];
   if (sc.state === 'stop') return ['off', `Son kurulum stop oldu (${sc.ago} mum önce)`];
   if (sc.state === 'be') return ['off', `Son kurulum kâr aldı, kalanı başabaşta kapandı (${sc.ago} mum önce)`];
   if (sc.state === 'full') return ['off', `Son kurulum +200 $ oldu (${sc.ago} mum önce)`];
   if (sc.distA == null) return ['wait', 'Bekleniyor'];
-  return ['wait', `Bekleniyor · bölgeye ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
+  return ['wait', `Bekleniyor · limite ${sc.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(sc.distP * 100 * (sh ? 1 : -1))})`];
 }
 function scenCard(sc, key) {
   const sh = key === 'short', title = sh ? 'Short' : 'Long';
-  if (!sc || !sc.plan) return `<div class="plan ${key}"><h3>${title}</h3><p class="note">Yakında (±%25) üst zaman dilimi ${sh ? 'direnci' : 'desteği'} yok.</p></div>`;
+  if (!sc || !sc.plan) return '';
   const p = sc.plan, st = sc.stats, [stc, stt] = scenStateTxt(sc, key), good = SV.scen.good(sc);
   const h = scenHist && scenHist[key] && scenHist[key][sc.strong ? 'strong' : 'base'];
-  const tier = good ? '<span class="tier ok">İyi kurulum</span>' : sc.strong ? `<span class="tier mid">Güçlü · ${sc.aligned ? (sc.stats.n < 60 ? 'az örnek' : 'doğrulamada zayıf') : 'piyasaya ters'}</span>` : '<span class="tier">Zayıf</span>';
+  const tier = good ? '<span class="tier ok">Güçlü</span>' : sc.strong && sc.aligned && st.p50 >= 0.54 ? '<span class="tier mid">Orta</span>' : `<span class="tier">Zayıf${sc.strong && !sc.aligned ? ' · piyasaya ters' : ''}</span>`;
   const tierName = ['', '+50 $', '+100 $', '+200 $'];
-  const doneTxt = sc.done && sc.done.state === 'late' ? `<p class="note">Son ret mumu bölgeden çok uzakta kapattı; giriş için geç.</p>`
-    : sc.done ? `<p class="note">Son kurulum: ${sc.done.state === 'full' ? '+200 $ oldu' : sc.done.state === 'be' ? `${tierName[sc.done.tier]} görüldü, kalanı başabaşta kapandı` : 'stop oldu'} (${sc.done.ago} mum önce).</p>` : '';
+  const doneTxt = '';
   const ck = { 0: 'Trend çizgisi' };
   const checks = sc.checks.map((c, k) => `<li class="${c.ok ? 'ok' : 'no'}" title="${c.text}">${c.ok ? '✓' : '✗'} ${c.market ? 'Piyasa yönünde' : ck[k]}</li>`).join('');
   const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
-  const split = st.tr != null ? ` Coin bölmesi: BTC/ETH/BNB ${pctTxt(st.tr)}, SOL/XRP ${pctTxt(st.te)}.` : '';
+  const split = st.tr != null ? ` Coin bölmesi (30 coin, iki yarı): ${pctTxt(st.tr)} / ${pctTxt(st.te)}.` : '';
   const here = h && h.n ? ` Bu grafiğin geçmişinde aynı tür ${h.n} işlem: +50 $ ${pctTxt((h.n - h.t[0]) / h.n)}, ortalama ${usdTxt(h.usd / h.n)}.` : '';
   return `<div class="plan ${key}${sc.state === 'triggered' && good ? ' good' : ''}">
     <h3>${title} ${tier}</h3>
     <p class="st ${stc}">${stt}</p>${doneTxt}
     <p class="zn"><span class="num">${SV.fmt(sc.zone.lo)}${sc.zone.hi > sc.zone.lo ? '–' + SV.fmt(sc.zone.hi) : ''}</span> · ${sc.zone.names.join(' + ')}</p>
-    <ul class="ck">${checks}</ul>${sc.strong && !sc.aligned ? `<p class="note down">Trend teması piyasa yönüne ters: geçmişte çoğunlukla kırıldı (+50 $ ${pctTxt(st.p50)}).</p>` : ''}
+    <ul class="ck">${checks}</ul>
     <table class="lvt"><thead><tr><th></th><th>Fiyat</th><th>Olasılık</th></tr></thead><tbody>
-      ${row(sc.state === 'triggered' ? 'Giriş' : 'Giriş ~', p.entry, null)}
+      ${row(sc.state === 'triggered' ? 'Giriş' : 'Limit', p.entry, null)}
       ${row('Stop −50 $', p.stop, null, 'down')}
       ${row('+50 $', p.lv[0], st.p50, 'up')}
       ${row('+100 $', p.lv[1], st.p100, 'up')}
       ${row('+200 $', p.lv[2], st.p200, 'up')}
     </tbody></table>
     <p class="meta">30 günde ort. ${usdTxt(st.usd)} / işlem · ${st.n.toLocaleString('tr-TR')} örnek${st.n < 60 ? ' · <b>az örnek</b>' : ''}${sc.tested ? '' : ` · <b>${TFN[S.interval]} test edilmedi</b>`}</p>
-    <details class="how" data-k="${key}"><summary>Nasıl hesaplandı?</summary>
-      <p>${sh ? 'Fiyat dirence gelip iğne bırakır ve bölgenin altında kapatırsa o mumun kapanışından short.' : 'Fiyat desteğe inip iğne bırakır ve bölgenin üstünde kapatırsa o mumun kapanışından long.'} Stop %5 (−50 $). +50 $'da üçte biri kapatılır ve stop girişe çekilir, +100 $'da üçte biri, +200 $'da kalanı. Bölgeden 1 ATR'dan ya da %4'ten uzak kapanan mumlar giriş sayılmaz.</p>
-      <p>Backtest: BTC, ETH, BNB, SOL, XRP · 1s/4s/1G · 30 gün. Olasılık, o kademeye stoptan önce ulaşma oranı; rastgele girişte +%5'in −%5'ten önce gelme oranı ≈ %50. Bu grup: ${sc.strong ? 'güçlü' : 'zayıf'}, piyasa ${sc.aligned ? 'yönünde' : 'yönüne ters'}. Haftalık (7 gün) +50 $ oranı ${pctTxt(st.w7)}.${split}${here}${sc.tested ? '' : ' Bu kural sadece 1s, 4s ve 1G grafiklerde test edildi; bu zaman diliminde oranlar geçerli değil ve bildirim gönderilmez.'}</p>
-    </details>
     <button class="btn sm" data-plan="${key}">Grafiğe çiz</button></div>`;
 }
 function patStateTxt(x) {
   const lg = x.dir > 0, tierName = ['', '+50 $', '+100 $', '+200 $'];
   if (x.state === 'triggered') return ['go', `Giriş oluştu · ${x.ago ? x.ago + ' mum önce' : 'son kapanan mumda'}, ${SV.fmt(x.plan.entry)} fiyatından${x.tier ? ` · ${tierName[x.tier]} kademesi görüldü` : ''}`];
   if (x.state === 'trying') return ['in', `Kırılıyor · mum ${SV.fmt(x.level)} ${lg ? 'üstünde' : 'altında'} kapanırsa giriş oluşur`];
-  if (x.state === 'near') return ['near', `Yaklaşıyor · kırılıma ${x.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(x.distP * 100 * (lg ? 1 : -1))})`];
-  if (x.state === 'wait') return ['wait', `Bekleniyor · kırılıma ${x.distA.toFixed(1).replace('.', ',')} ATR (${SV.pct(x.distP * 100 * (lg ? 1 : -1))})`];
+  if (x.state === 'near' || x.state === 'wait') return [x.state, `${x.state === 'near' ? 'Yaklaşıyor' : 'Bekleniyor'} · fiyat ${SV.fmt(x.level)} ${lg ? 'üstünde' : 'altında'} kapanırsa ${lg ? 'long' : 'short'} (${x.distA.toFixed(1).replace('.', ',')} ATR, ${SV.pct(x.distP * 100 * (lg ? 1 : -1))})`];
   if (x.state === 'stop') return ['off', `Kırılım stop oldu (${x.ago} mum önce)`];
   if (x.state === 'be') return ['off', `${tierName[x.tier]} görüldü, kalanı başabaşta kapandı (${x.ago} mum önce)`];
   return ['off', `+200 $ oldu (${x.ago} mum önce)`];
 }
 function patCard(x) {
   const key = x.dir > 0 ? 'long' : 'short', lg = x.dir > 0, p = x.plan, st = x.stats, [stc, stt] = patStateTxt(x);
-  const strong = st.p50 >= 0.6 && st.n >= 100;
+  const strong = SV.scen.strongSt(st), tr = x.kind === 'trend';
   const tier = strong ? '<span class="tier ok">Güçlü</span>' : `<span class="tier mid">Orta${st.n < 60 ? ' · az örnek' : ''}</span>`;
   const row = (lbl, px, pr, cls = '') => `<tr class="${cls}"><th>${lbl}</th><td class="num">${SV.fmt(px)}</td><td class="num">${pr == null ? '' : pctTxt(pr)}</td></tr>`;
   const mk = x.aligned == null ? '' : `<ul class="ck"><li class="${x.aligned ? 'ok' : 'no'}">${x.aligned ? '✓' : '✗'} Piyasa yönünde</li></ul>`;
@@ -489,29 +485,23 @@ function patCard(x) {
   return `<div class="plan ${key} pat${x.state === 'triggered' && strong ? ' good' : ''}">
     <h3>${lg ? 'Long' : 'Short'} · ${x.name} ${tier}</h3>
     <p class="st ${stc}">${stt}</p>
-    <p class="zn">Kırılım seviyesi <span class="num">${SV.fmt(x.level)}</span> · formasyon ${lg ? 'yukarı' : 'aşağı'} kırılımı</p>${mk}
+    <p class="zn">${tr ? `${x.line} (${x.touches} temas)` : 'Formasyon sınırı'}</p>${mk}
     <table class="lvt"><thead><tr><th></th><th>Fiyat</th><th>Olasılık</th></tr></thead><tbody>
-      ${row(x.state === 'triggered' ? 'Giriş' : 'Giriş ~', p.entry, null)}
+      ${row(x.state === 'triggered' ? 'Giriş' : lg ? 'Üstünde kapanış' : 'Altında kapanış', p.entry, null)}
       ${row('Stop −50 $', p.stop, null, 'down')}
       ${row('+50 $', p.lv[0], st.p50, 'up')}
       ${row('+100 $', p.lv[1], st.p100, 'up')}
       ${row('+200 $', p.lv[2], st.p200, 'up')}
     </tbody></table>
     <p class="meta">30 günde ort. ${usdTxt(st.usd)} / işlem · ${st.n.toLocaleString('tr-TR')} örnek${st.n < 60 ? ' · <b>az örnek</b>' : ''}</p>
-    <details class="how" data-k="${x.key}"><summary>Nasıl hesaplandı?</summary>
-      <p>Mum, formasyonun ${lg ? 'üst' : 'alt'} çizgisinin 0,25 ATR ${lg ? 'üstünde' : 'altında'} kapanınca o kapanıştan ${lg ? 'long' : 'short'}. Stop %5 (−50 $). +50 $'da üçte biri kapatılır ve stop girişe çekilir, +100 $'da üçte biri, +200 $'da kalanı.</p>
-      <p>Backtest: 30 Binance coini · 4s ve 1G · 30 gün. Olasılık, o kademeye stoptan önce ulaşma oranı. Rastgele girişte +50 $ oranı ${pctTxt(SV.scen.PAT_RAND)}, bütün formasyon kırılımlarında ${pctTxt(SV.scen.PAT_ALL)}; sadece rastgeleden belirgin iyi olan formasyonlar kurulum olarak gösterilir. Coin bölmesi: ${pctTxt(st.a)} / ${pctTxt(st.b)} · 4s ${pctTxt(st.h4)}, 1G ${pctTxt(st.d1)}.</p>
-    </details>
     <button class="btn sm" data-plan="${x.key}">Grafiğe çiz</button></div>`;
 }
 function marketBox() {
-  const t = bars.length ? bars[bars.length - 1].t : Date.now() / 1000, rg = SV.scen.regime(t), M = SV.scen.STATS.market;
-  if (!rg) return '<p class="note">Piyasa yönü: BTC aylık verisi yükleniyor…</p>';
+  const t = bars.length ? bars[bars.length - 1].t : Date.now() / 1000, rg = SV.scen.regime(t);
+  if (!rg) return '';
   const bull = rg.dir > 0;
-  const why = `BTC aylık ${rg.side > 0 ? 'ortalamanın üstünde' : 'ortalamanın altında'}, ortalama ${rg.slope > 0 ? 'yükseliyor' : 'düşüyor'}${rg.side !== rg.dir ? ` (${bull ? 'düzeltme' : 'tepki'} olabilir)` : ''}`;
   const warn = rg.next && rg.next.dir !== rg.dir ? `<span class="warn">Ay böyle kapanırsa ${bull ? 'ayıya' : 'boğaya'} döner.</span>` : '';
-  return `<div class="mkt ${bull ? 'bull' : 'bear'}"><b>Piyasa: ${bull ? 'Boğa' : 'Ayı'} <small>· ${rg.since} aydır</small></b><span>${why}</span>${warn}
-    <details class="how" data-k="mkt"><summary>Nasıl belirleniyor?</summary><p>BTC aylık kapanışı 10 aylık ortalamanın üstünde ve ortalama 2 ayda yükselmişse boğa, altında ve düşmüşse ayı; çelişirse önceki yön korunur. Sadece ay kapanışında değişir. Backtest (5 coin, 2018–2026): 90 günde o yönde %20'lik hareketin ters yöndekinden önce gelme oranı ${pctTxt(M.early.with)} / ${pctTxt(M.late.with)} (2018–22 / 2023–26), ters yön ${pctTxt(M.early.against)} / ${pctTxt(M.late.against)}. 8 yılda ${M.flips} kez yön değiştirdi.</p></details></div>`;
+  return `<div class="mkt ${bull ? 'bull' : 'bear'}"><b>Piyasa: ${bull ? 'Boğa' : 'Ayı'} <small>· ${rg.since} aydır</small></b>${warn}</div>`;
 }
 function renderIdea() {
   $('kurSym').textContent = `· ${S.symbol} ${TFN[S.interval] || S.interval}`;
@@ -520,15 +510,15 @@ function renderIdea() {
 function renderIdeaInner() {
   const box = $('idea'), kb = $('kurIdea');
   const both = (side, cards) => { box.innerHTML = side; kb.innerHTML = cards; };
-  if (!bars.length || !res) { both('<p class="empty">Hesaplanıyor…</p>', '<p class="empty">Hesaplanıyor…</p>'); idea = null; return; }
-  if (!res.ctx) { const m = `<p class="empty">Bu grafikte ${bars.length} mum var; senaryo için en az 60 mum gerekiyor. Daha kısa bir zaman dilimine geç.</p>`; both(marketBox() + m, m); idea = null; return; }
+  if (!bars.length || !res || barsKey !== S.market + S.symbol + S.interval) { both('<p class="empty">Hesaplanıyor…</p>', '<p class="empty">Hesaplanıyor…</p>'); idea = null; return; }
+  if (!res.ctx) { const m = '<p class="empty">—</p>'; both(marketBox() + m, m); idea = null; return; }
   if (!htfRaw['1M'] && !htfRaw['1w']) { both('<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>', '<p class="empty">Üst zaman dilimi verisi yükleniyor…</p>'); idea = null; return; }
   const n = bars.length, price = bars[n - 1].c;
   const L = SV.scen.live(bars, res.ctx, htfPair(), closedCount(), S.market + S.symbol, S.interval);
   if (!L) { both(marketBox() + '<p class="empty">Senaryo için yeterli geçmiş yok.</p>', '<p class="empty">Senaryo için yeterli geçmiş yok.</p>'); idea = null; return; }
   const a = L.atr;
   const mark = (c, sc, name) => c ? { ...c, label: name + (sc && sc.strong && sc.zone.lo === c.lo ? ' · güçlü' : '') } : null;
-  idea = { res: mark(L.R1, L.short, 'Direnç bölgesi'), sup: mark(L.S1, L.long, 'Destek bölgesi'), atr: a, live: L, plans: {} };
+  idea = { key: barsKey, res: mark(L.R1, L.short, 'Direnç bölgesi'), sup: mark(L.S1, L.long, 'Destek bölgesi'), atr: a, live: L, plans: {} };
   for (const k of ['short', 'long']) if (L[k] && L[k].plan) idea.plans[k] = { type: k, entry: L[k].plan.entry, stop: L[k].plan.stop, target: L[k].plan.lv[1] };
   const st = res.state || {}, since = t => { for (let k = res.signals.length - 1; k >= 0; k--) if (res.signals[k].type === t) return n - 1 - res.signals[k].i; return Infinity; };
   let score = 0; const why = [];
@@ -546,16 +536,16 @@ function renderIdeaInner() {
   box.innerHTML = `
     ${marketBox()}
     <p class="bias ${bias[0]}" title="${why.join(', ')}">Bu grafikte kısa vade: <b>${bias[1]}</b></p>
-    ${orangeLine()}
-    <p class="note">Short/long kurulumları İşlemler panelinde <button class="ogo" data-kur="1">Kurulumlar</button> sekmesinde. Yatırım tavsiyesi değildir · ${new Date(ideaAt).toLocaleTimeString('tr-TR')}</p>`;
-  const pats = SV.scen.patLive(res.patterns, bars, res.ctx, closedCount(), S.interval);
+    ${orangeLine()}`;
+  const Dh = htfRaw['1d'], Dc = Dh && Dh.length > 1 && Dh[Dh.length - 1].t + STEP['1d'] > Date.now() / 1000 ? Dh.slice(0, -1) : Dh;
+  const pats = [...SV.scen.patLive(res.patterns, bars, res.ctx, closedCount(), S.interval), ...SV.scen.trendLive(bars, res.ctx, htfPair(), Dc, closedCount(), S.interval, S.market + S.symbol)];
   pats.forEach((x, j) => { x.key = 'p' + j; idea.plans[x.key] = { type: x.dir > 0 ? 'long' : 'short', entry: x.plan.entry, stop: x.plan.stop, target: x.plan.lv[1] }; });
   const col = (key, dir) => {
     const zs = L[key], items = [{ s: zs && zs.plan ? SV.scen.score(zs.stats) : -1, h: scenCard(zs, key) }, ...pats.filter(x => x.dir === dir).map(x => ({ s: x.score, h: patCard(x) }))];
     items.sort((x, y) => y.s - x.s);
-    return `<div class="kcol ${key}"><h4>${dir > 0 ? 'Long' : 'Short'} <span class="note">${items.filter(x => x.s >= 0).length} kurulum · güce göre</span></h4>${items.map(x => x.h).join('')}</div>`;
+    return `<div class="kcol ${key}"><h4>${dir > 0 ? 'Long' : 'Short'} <span class="note">${items.filter(x => x.s >= 0).length}</span></h4>${items.map(x => x.h).join('')}</div>`;
   };
-  const patNote = SV.scen.PAT_TF.includes(S.interval) ? '' : `<p class="note kfull">Formasyon kurulumları 4s ve 1G grafiklerde çıkar. ${S.interval === '1h' ? '1s grafikte geçmişte rastgele girişten iyi değildi.' : `${TFN[S.interval] || S.interval} test edilmedi.`}</p>`;
+  const patNote = '';
   kb.innerHTML = `${col('short', -1)}${col('long', 1)}${patNote}`;
   for (const d of [...box.querySelectorAll('details[data-k]'), ...kb.querySelectorAll('details[data-k]')]) if (openD.has(d.dataset.k)) d.open = true;
 }
@@ -593,8 +583,8 @@ function renderNotes() {
   if (tb) tb.innerHTML = `Bildirimler${n ? ` <span class="nbadge">${n > 99 ? '99+' : n}</span>` : ''}`;
   const box = $('notView');
   if (!box) return;
-  const head = `<div class="nhead"><span class="note">${S.notify ? 'Bildirimler açık.' : 'Bildirimler kapalı; açmak için sağdaki "Bildirimleri aç" düğmesine bas.'} ${notes.length} bildirim · en fazla 200 saklanır.</span>${notes.length ? '<button class="link" data-nclear="1">Temizle</button>' : ''}</div>`;
-  box.innerHTML = head + (notes.length ? `<ul class="nlist">${notes.map((x, k) => `<li class="${x.t > noteSeen ? 'new' : ''}"><time>${noteDt.format(x.t)}</time><div><b></b><span></span></div>${x.s ? `<button class="chip" data-nk="${k}">Grafiği aç</button>` : ''}</li>`).join('')}</ul>` : '<p class="note">Henüz bildirim yok.</p>');
+  const head = `<div class="nhead"><span class="note">${notes.length}</span>${notes.length ? '<button class="link" data-nclear="1">Temizle</button>' : ''}</div>`;
+  box.innerHTML = head + (notes.length ? `<ul class="nlist">${notes.map((x, k) => `<li class="${x.t > noteSeen ? 'new' : ''}"><time>${noteDt.format(x.t)}</time><div><b></b><span></span></div>${x.s ? `<button class="chip" data-nk="${k}">Grafiği aç</button>` : ''}</li>`).join('')}</ul>` : '');
   box.querySelectorAll('.nlist li').forEach((li, k) => { li.querySelector('b').textContent = notes[k].title; li.querySelector('span').textContent = notes[k].body; });
 }
 function notify(title, body, key, coolMs = 3 * 3600e3, ctx) {
@@ -610,22 +600,23 @@ function notify(title, body, key, coolMs = 3 * 3600e3, ctx) {
   addNote(title, body, ctx || { m: S.market, s: S.symbol, tf: S.interval });
 }
 function checkAlerts() {
-  if (!S.notify || !idea || !idea.live || !bars.length) return;
+  if (!S.notify || !idea || !idea.live || !bars.length || idea.key !== barsKey || barsKey !== S.market + S.symbol + S.interval) return;
   const L = idea.live, tf = TFN[S.interval];
   for (const key of ['short', 'long']) {
     const sc = L[key];
     if (!sc || !sc.plan) continue;
     const sh = key === 'short', p = sc.plan, st = sc.stats;
     if (sc.state === 'triggered' && SV.scen.good(sc)) {
-      notify(`${S.symbol} ${tf}: iyi ${sh ? 'short' : 'long'} girişi`, `Giriş ${SV.fmt(p.entry)} · stop ${SV.fmt(p.stop)} (−50 $) · +50 $ ${SV.fmt(p.lv[0])} · +100 $ ${SV.fmt(p.lv[1])} · +200 $ ${SV.fmt(p.lv[2])}. Geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}, piyasa yönünde.`, `e${S.symbol}${S.interval}${key}${bars[sc.i].t}`, 864e5);
-    } else if (sc.state === 'near' || sc.state === 'inzone') {
+      notify(`${S.symbol} ${tf}: güçlü ${sh ? 'short' : 'long'} limiti doldu`, `Giriş ${SV.fmt(p.entry)} · stop ${SV.fmt(p.stop)} (−50 $) · +50 $ ${SV.fmt(p.lv[0])} · +100 $ ${SV.fmt(p.lv[1])} · +200 $ ${SV.fmt(p.lv[2])}. Geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}, piyasa yönünde.`, `e${S.symbol}${S.interval}${key}${bars[sc.i].t}`, 864e5);
+    } else if (sc.state === 'near') {
       const edge = sh ? sc.zone.lo : sc.zone.hi;
-      notify(`${S.symbol} ${tf}: ${sh ? 'dirence' : 'desteğe'} yaklaştı`, `Fiyat ${SV.fmt(L.price)}, bölge ${SV.fmt(edge)} (${sc.zone.names.join(' + ')}). ${SV.scen.good(sc) ? `İyi kurulum, geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}.` : sc.strong ? 'Güçlü kurulum ama piyasa yönüne ters ya da örnek az.' : 'Zayıf kurulum.'} ${sh ? 'Bölgenin altında' : 'Bölgenin üstünde'} kapanış gelirse giriş oluşur.`, `z${S.symbol}${S.interval}${key}${Math.round(edge)}`);
+      notify(`${S.symbol} ${tf}: ${sh ? 'dirence' : 'desteğe'} yaklaştı`, `Fiyat ${SV.fmt(L.price)}, ${sh ? 'limit satış' : 'limit alış'} ${SV.fmt(edge)} (${sc.zone.names.join(' + ')}). ${SV.scen.good(sc) ? `Güçlü kurulum, geçmişte +50 $ oranı %${Math.round(st.p50 * 100)}.` : 'Zayıf ya da orta kurulum.'} Stop ${SV.fmt(p.stop)}.`, `z${S.symbol}${S.interval}${key}${Math.round(edge)}`);
     }
   }
 }
 function checkSignalAlerts() {
   if (!res || !bars.length) return;
+  if (barsKey !== S.market + S.symbol + S.interval) return;
   const key = S.symbol + S.interval, n = bars.length;
   if (sigSeen.key !== key) { sigSeen = { key, i: n - 1 }; return; }
   for (const s of res.signals) {
@@ -706,24 +697,23 @@ function renderLevelTable() {
   $('lvl').innerHTML = res.levels.length ? res.levels.map(l => {
     const dist = (l.price - last) / last * 100, r = l.price >= last;
     return `<tr><td><span class="tag ${r ? 'r' : 's'}">${r ? 'Direnç' : 'Destek'}</span></td><td class="num">${SV.fmt(l.price)}</td><td class="num">${l.touches}</td><td class="num ${dist >= 0 ? 'up' : 'down'}">${SV.pct(dist)}</td></tr>`;
-  }).join('') : '<tr><td colspan="4" class="empty">Yeterli pivot yok. Pivot genişliğini düşürmeyi dene.</td></tr>';
+  }).join('') : '<tr><td colspan="4" class="empty">—</td></tr>';
 }
 
 const word = d => d === 'up' ? '<span class="up">Yükseliş</span>' : d === 'down' ? '<span class="down">Düşüş</span>' : '—';
 function orangeLine() {
-  const line = (type, name, up, dn, none) => {
+  const line = (type, name, up, dn) => {
     const o = res && res.signals ? res.signals.filter(x => x.type === type).pop() : null;
-    if (!o) return `<p class="oline">${name}: ${none}</p>`;
+    if (!o) return '';
     const t = bars[type === 'zz' && o.at != null ? o.at : o.i].t, ago = Math.max(0, Math.round((Date.now() / 1000 - t) / 86400));
     return `<p class="oline">${name}: <button class="ogo" data-oi="${o.at ?? o.i}"><span class="tag ${type}">${o.dir > 0 ? up : dn}</span> ${new Date(t * 1000).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })} · ${ago ? ago + ' gün önce' : 'bugün'}</button></p>`;
   };
-  const enough = htfRaw['1w'] && htfRaw['1w'].length > 120 ? 'bu grafikte yok' : 'en az 2 yıllık haftalık veri gerekir';
   const zn = zzNow && bars.length ? (() => {
     const c = bars[bars.length - 1].c, up = zzNow.dir > 0, trig = up ? zzNow.ext / 1.2 : zzNow.ext * 1.2;
     const moved = up ? 1 - c / zzNow.ext : c / zzNow.ext - 1, left = up ? 1 - trig / c : trig / c - 1;
-    return `<p class="oline note">Şu an ${up ? 'yükseliş' : 'düşüş'} salınımı · ${up ? 'tepe' : 'dip'} ${SV.fmt(zzNow.ext)} (kapanış), fiyat %${Math.max(0, Math.round(moved * 100))} ${up ? 'aşağıda' : 'yukarıda'}${left > 0 ? `; işaret için %${Math.round(left * 100)} daha ${up ? 'düşüş' : 'yükseliş'} gerekir (${SV.fmt(trig)})` : '; haftalık kapanış böyle olursa işaret çıkar'}</p>`;
+    return `<p class="oline note">${up ? 'Tepe' : 'Dip'} ${SV.fmt(zzNow.ext)} · işaret ${SV.fmt(trig)}${left > 0 ? ` (%${Math.round(left * 100)})` : ''}</p>`;
   })() : '';
-  return line('tric', 'Son dönüş teyidi', '▲ Boğaya döndü', '▼ Ayıya döndü', enough) + line('tri', 'Son ön uyarı', '△ Boğaya dönüş yakın', '▽ Ayıya dönüş yakın', enough) + line('zz', 'Son %20 dönüş', '● Dip', '● Tepe', 'bu grafikte yok') + zn + line('orange', 'Son turuncu', '↑ Dip', '↓ Tepe', 'bu grafikte yok');
+  return line('tric', 'Son dönüş teyidi', '▲ Boğaya döndü', '▼ Ayıya döndü') + line('tri', 'Son ön uyarı', '△ Boğaya dönüş yakın', '▽ Ayıya dönüş yakın') + line('zz', 'Son %20 dönüş', '● Dip', '● Tepe') + zn + line('orange', 'Son turuncu', '↑ Dip', '↓ Tepe');
 }
 function renderState() {
   const st = res && res.state;
@@ -758,7 +748,7 @@ const dtf = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', h
 const sigOn = s => (s.type === 'buy' || s.type === 'sell') ? S.layers.bs : s.type === 'rev' ? S.layers.rev : s.type === 'react' ? S.layers.react : s.type === 'ltb' ? S.layers.ltb : s.type === 'zsell' ? S.layers.zone : s.type === 'orange' ? S.layers.orange : s.type === 'tri' || s.type === 'tric' ? S.layers.tri : s.type === 'zz' ? S.layers.zz : S.layers.big;
 function renderSignals() {
   const list = res ? res.signals.filter(sigOn).slice(-25).reverse() : [];
-  $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why.join(' · ')}${s.mk < 0 ? ' · piyasa yönüne ters' : ''}</span></button></li>`).join('')
+  $('sigs').innerHTML = list.length ? list.map(s => `<li><button data-i="${s.i}"><span class="tag ${s.type}">${SIG_NAME[s.type]}</span><span class="num">${SV.fmt(bars[s.i].c)}</span><time>${dtf.format(bars[s.i].t * 1000)}</time><span class="why">${s.why[0] || ''}${s.mk < 0 ? ' · piyasaya ters' : ''}</span></button></li>`).join('')
     : '<li class="empty">Bu aralıkta sinyal yok.</li>';
 }
 $('sigs').addEventListener('click', e => {
@@ -869,7 +859,7 @@ function renderPatterns() {
     const o = p.outlook, live = p.status === 'forming' || p.status === 'confirmed';
     const lc = bars[bars.length - 1].c, tg = x => `${SV.fmt(x)} (${SV.pct((x - lc) / lc * 100)})`;
     const out = o && live && p.brk == null && o.pDir < 0.6 ? `<span class="why"><b>Yön belirsiz</b> · aşağı %${Math.round((o.dir < 0 ? o.pDir : 1 - o.pDir) * 100)} / yukarı %${Math.round((o.dir > 0 ? o.pDir : 1 - o.pDir) * 100)} (geçmişte ${o.n} örnek)</span>`
-      : o && live ? `<span class="why"><b class="${o.dir > 0 ? 'up' : 'down'}">${o.dir > 0 ? '↑' : '↓'} Hedef ${tg(o.target)} · olasılık %${Math.round(o.prob * 100)}</b>${o.weak ? ' (zayıf örnek)' : ''}<br>${o.text}</span>` : p.target != null ? `<span class="why">Hedef ${tg(p.target)}</span>` : '';
+      : o && live ? `<span class="why"><b class="${o.dir > 0 ? 'up' : 'down'}">${o.dir > 0 ? '↑' : '↓'} Hedef ${tg(o.target)} · olasılık %${Math.round(o.prob * 100)}</b></span>` : p.target != null ? `<span class="why">Hedef ${tg(p.target)}</span>` : '';
     return `<li><button data-p="${i}"${patSel === i ? ' aria-current="true"' : ''}><span class="tag ${p.bull === true ? 'buy' : p.bull === false ? 'sell' : 'neu'}">${p.name}</span><span class="st ${p.active ? 'act' : ''}">${p.active ? 'Aktif · ' : ''}${PST[p.status]}</span><time>${dtf.format(bars[p.last].t * 1000)}</time>${out}</button></li>`;
   };
   $('pats').innerHTML = (act.length ? act.map(row).join('') : '<li class="empty">Şu an aktif formasyon yok.</li>') + old.map(row).join('');
@@ -1140,6 +1130,15 @@ function openTf(m, s, tf) {
 }
 loadBtcMonthly();
 setInterval(loadBtcMonthly, 3600e3);
+(() => {
+  const st = SV.store.get('seviye.bolumler', {});
+  for (const sec of document.querySelectorAll('#side > section[data-sec]')) {
+    const k = sec.dataset.sec, btn = sec.querySelector('h2 .whead');
+    const set = v => { sec.classList.toggle('shut', !v); btn.setAttribute('aria-expanded', v); btn.querySelector('.wcaret').textContent = v ? '▾' : '▸'; };
+    set(st[k] !== false);
+    btn.addEventListener('click', () => { const v = sec.classList.contains('shut'); st[k] = v; SV.store.set('seviye.bolumler', st); set(v); });
+  }
+})();
 SV.scan.init({ cur: () => ({ symbol: S.symbol, market: S.market, interval: S.interval }), notify, open: openTf });
 SV.favs.init({ cur: () => ({ symbol: S.symbol, market: S.market, view: S.view }), toast: t => toast(t, '') });
 (() => {

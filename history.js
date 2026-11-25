@@ -177,11 +177,11 @@ SV.history = (() => {
   }
 
   function status() {
-    if (!addr) return 'Hyperliquid bağlı değil; sadece elle girilen kapanmış işlemler görünür.';
+    if (!addr) return '';
     if (err) return err;
-    if (!loaded) return 'Hyperliquid geçmişi yükleniyor…';
+    if (!loaded) return '…';
     const old = fills.length ? new Date(fills[0].time).toLocaleDateString('tr-TR') : '';
-    return `${trips.length} kapanmış işlem · ${fills.length.toLocaleString('tr-TR')} dolum${old ? ' · ' + old + "'den beri" : ''}${fills.length >= 9990 ? ' (Hyperliquid son 10.000 dolumu verir)' : ''} · ${new Date(at).toLocaleTimeString('tr-TR')}`;
+    return `${trips.length} işlem${old ? ' · ' + old : ''}`;
   }
 
   function histHtml() {
@@ -212,7 +212,7 @@ SV.history = (() => {
     const x = t => 4 + (t - t0) / ((t1 - t0) || 1) * (W - 8), y = v => 6 + (hi - v) / sp * (H - 12);
     const d = pts.map((p, k) => (k ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1)).join(' ');
     const col = s.net >= 0 ? 'var(--up)' : 'var(--down)';
-    return `<figure class="eq"><figcaption>Kümülatif net K/Z <span class="note">(kapanış sırasına göre)</span></figcaption>
+    return `<figure class="eq"><figcaption>Kümülatif net K/Z</figcaption>
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Kümülatif net kâr zarar eğrisi">
         <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-dasharray="4 4"/>
         <path d="${d} L${x(t1).toFixed(1)} ${y(0)} L${x(t0)} ${y(0)} Z" fill="${col}" opacity=".12"/>
@@ -257,11 +257,10 @@ SV.history = (() => {
     const cnt = B.map(([, f]) => { const g = rows.filter(f), c = [0, 0, 0, 0, 0]; for (const r of g) c[catOf(r.v)]++; return { n: g.length, c }; });
     const cell = (x, k) => x.n ? `${x.c[k]} <small>${Math.round(x.c[k] / x.n * 100)}%</small>` : '—';
     const ok = cnt[0].c[0] + cnt[0].c[1] + cnt[0].c[2];
-    return `<div class="tiers"><h3>Kâr kademeleri <span class="note">(1.000 $'lık pozisyon başına net: başarılı +50 $, çok başarılı +100 $, süper +200 $)</span></h3>
+    return `<div class="tiers"><h3>Kâr kademeleri</h3>
       <table><thead><tr><th>Kademe</th>${B.map(b => `<th>${b[0]}</th>`).join('')}</tr></thead><tbody>
       ${CATS.map((c, k) => `<tr><td class="${c[2]}">${c[0]}${c[1] > 0 ? ` <small>≥ +${c[1]} $</small>` : c[1] === 0 ? ' <small>0–50 $</small>' : ''}</td>${cnt.map(x => `<td class="num">${cell(x, k)}</td>`).join('')}</tr>`).join('')}
-      <tr><td>İşlem</td>${cnt.map(x => `<td class="num">${x.n}</td>`).join('')}</tr></tbody></table>
-      <p class="note">${ok} işlem (%${Math.round(ok / cnt[0].n * 100)}) en az başarılı (+50 $) seviyesinde. Kısa süreli (≤ 7 gün) işlemlerde +50–100 $ yeterli kabul edilir. Net = fiyat farkı − komisyon + fonlama; kaldıraç hesaba katılmaz, 1.000 $'lık pozisyon büyüklüğüne göredir.</p></div>`;
+      <tr><td>İşlem</td>${cnt.map(x => `<td class="num">${x.n}</td>`).join('')}</tr></tbody></table></div>`;
   }
 
   function pfTxt(v) { return v === Infinity ? '∞' : v.toFixed(2).replace('.', ','); }
@@ -277,7 +276,7 @@ SV.history = (() => {
 
   function anaHtml() {
     const { usd } = U(), list = selected(), s = summary(list);
-    if (!s.n) return bar() + portfolioHtml() + `<p class="empty">Bu dönemde analiz edilecek kapanmış işlem yok.</p>`;
+    if (!s.n) return bar() + portfolioHtml() + '<p class="empty">—</p>';
     const k = (h, v, sub, c = '') => `<div class="kpi"><span>${h}</span><b class="num ${c}">${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
     const L = summary(list.filter(t => t.side === 'long')), Sh = summary(list.filter(t => t.side === 'short'));
     const side = (n, x) => `<tr><td>${n}</td><td class="num">${x.n}</td><td class="num">${x.n ? pct(x.rate) : '—'}</td><td class="num ${cls(x.net)}">${x.n ? usd(x.net) : '—'}</td><td class="num">${x.n ? usd(x.exp) : '—'}</td></tr>`;
@@ -301,7 +300,6 @@ SV.history = (() => {
         <table><thead><tr><th>Sembol</th><th>Adet</th><th>Kazanan</th><th>Net</th><th>İşlem başı</th></tr></thead><tbody>${cs.slice(0, 12).map(c => side(U().esc(c.c), c.s)).join('')}</tbody></table>
       </div>
       ${ins.length ? `<h3>Gözlemler</h3><ul class="ins">${ins.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
-      <p class="note">Net = kapanış K/Z − komisyon + fonlama. Hesaplar Hyperliquid dolum geçmişinden yapılır; bir pozisyon sıfırlanınca işlem kapanmış sayılır. Yatırım tavsiyesi değildir.</p>
     </div>`;
   }
 

@@ -167,8 +167,8 @@ SV.trades = (() => {
     const list = hl.open || [];
     const n = list.length, tb = $('tradesTabs').querySelector('[data-v="ord"]');
     if (tb) tb.textContent = n ? `Açık emirler (${n})` : 'Açık emirler';
-    if (!hl.address) { box.innerHTML = '<p class="note">Açık emirler Hyperliquid adresinden okunur. "Hyperliquid" düğmesiyle adresini bağla.</p>'; return; }
-    if (!n) { box.innerHTML = `<p class="note">${hl.at ? 'Açık emir yok.' : 'Yükleniyor…'}</p>`; return; }
+    if (!hl.address) { box.innerHTML = '<p class="note">—</p>'; return; }
+    if (!n) { box.innerHTML = `<p class="note">${hl.at ? '—' : '…'}</p>`; return; }
     const TYPE = { Limit: 'Limit', 'Stop Market': 'Stop market', 'Stop Limit': 'Stop limit', 'Take Profit Market': 'Kâr al (market)', 'Take Profit Limit': 'Kâr al (limit)' };
     const dt = new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     let tot = 0;
@@ -188,7 +188,7 @@ SV.trades = (() => {
         <td>${o.t ? dt.format(o.t) : ''}</td>
       </tr>`;
     }).join('');
-    box.innerHTML = `<p class="note">Bekleyen emirler; gerçekleşmedikçe bakiyeyi ve K/Z'yi etkilemez. Yeni pozisyon açabilecek emirlerin toplam değeri: <b class="num">${tot.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} $</b></p>
+    box.innerHTML = `<p class="note">Toplam <b class="num">${tot.toLocaleString('tr-TR', { maximumFractionDigits: 2 })} $</b></p>
       <div class="tscroll"><table class="ttable"><thead><tr><th>Sembol</th><th>Yön</th><th>Tür</th><th>Fiyat</th><th>Miktar</th><th>Değer</th><th>Güncel</th><th>Uzaklık</th><th>Zaman</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
@@ -363,7 +363,7 @@ SV.trades = (() => {
     $('acct').innerHTML = acctHtml(list);
     renderOrders();
     $('tradesTotal').innerHTML = have ? `Toplam net: <b class="num ${total >= 0 ? 'up' : 'down'}">${usd(total)}</b>` : '';
-    $('tradesBody').innerHTML = rows || `<tr><td colspan="11" class="empty">Henüz işlem yok. "İşlem ekle" ile elle girebilir ya da Hyperliquid adresini bağlayabilirsin.</td></tr>`;
+    $('tradesBody').innerHTML = rows || `<tr><td colspan="11" class="empty">—</td></tr>`;
     const st = $('hlStatus');
     st.textContent = !hl.address ? '' : hl.err ? hl.err : hl.at ? `Hyperliquid: ${hl.address.slice(0, 6)}…${hl.address.slice(-4)} · ${hl.positions.length} pozisyon · ${new Date(hl.at).toLocaleTimeString('tr-TR')}` : 'Hyperliquid yükleniyor…';
     st.className = 'note' + (hl.err ? ' down' : '');

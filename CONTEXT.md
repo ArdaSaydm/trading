@@ -193,6 +193,12 @@ Kullanıcı isteğiyle:
 - İzleme listesi iç kaydırma olmadan tam boy.
 - Sağ panel genişliği sürüklenebilir: `#sideResize` (grafik ile panel arasında 6 px'lik sütun), 260 px ile (pencere − 520 px) arası. `--side` CSS değişkeni, `seviye.sagGenislik`; çift tık sıfırlar, ←/→ tuşları 30 px.
 
+## Sade arayüz (25 Kasım 2026)
+
+Kullanıcı: "Gereksiz yazı istemiyorum hiçbir yerde, sadece ben kullanacağım." Kaldırılanlar: kurulum kartlarındaki "Nasıl hesaplandı?" ve piyasa kutusundaki "Nasıl belirleniyor?" bölümleri, piyasa açıklama satırı, "Kurulumlar sekmesinde… Yatırım tavsiyesi değildir" notu (kullanıcı isteğiyle), veri yoksa "Son dönüş teyidi / ön uyarı / turuncu" satırları (satır hiç çıkmaz), formasyon/trend kartı açıklama cümleleri, son kurulum ve "piyasaya ters" notları, bölgesi olmayan boş kurulum kartı, başlık parantez notları, izleme listesi notu, bildirim sekmesi açıklaması, açık emir/geçmiş/analiz açıklama paragrafları, HL bağlantı penceresi ve dominans görünümü notları, formasyon rehberi giriş notu, favori taraması "zayıf … listelenmedi" satırı. Boş durumlar "—". Sinyal listesinde sadece ilk gerekçe; formasyon listesinde sadece hedef ve olasılık. Tarama notu "· 13:30 → 13:45".
+
+Sağ paneldeki bölümler (İşlem fikri, Durum, Formasyonlar, Son sinyaller, Destek ve direnç, Çizimler, Sinyal başarısı) başlığa tıklayınca açılır/kapanır (`section[data-sec]`, `.shut`), durum `seviye.bolumler`; varsayılan açık. İzleme listesi varsayılan kapalı. Ayarlar zaten `details`.
+
 ## Canlı veri koruması (24 Kasım 2026)
 
 Kullanıcının NVDAUSDT 1s grafiğinde son mum 0,2345'e indi (−%99,83), otomatik ölçek bozuldu. Binance REST'te veri normaldi (fiyat ~156, 24 saatlik dip 134); kaynak bulunamadı, tekrar üretilemedi. Koruma eklendi:
@@ -210,6 +216,9 @@ Kullanıcı TradingView tarzı bir izleme listesi istedi (ekran görüntüsü: U
 - "+ Ekle": BTC.D, TOTAL3, VIX gibi göstergeler ya da sembol ("sol", "nvda"). Satırın üstüne gelince ✕ ile çıkarılır. Satıra tıklayınca grafik açılır; göstergeler TradingView görünümünde açılır (`S.dom` = `CRYPTOCAP:…`, `TVC:VIX` vb.).
 - **Kullanıcı isteği (VIX'e gerek yok, statik olmasın):** Kripto/hisse satırları doğrudan favori listesidir (`SV.favs.list()`, `onChange` ile canlı). "+ Ekle" ile eklenen sembol favorilere, satırdaki ✕ favorilerden çıkarır; yıldız da aynı listeyi değiştirir. `seviye.izleme` sadece göstergeleri saklar (USDT.D+USDC.D, USDT.D, BTC.D, TOTAL3, TOTAL; eklenebilir: ETH.D, USDC.D, TOTAL2). Eski kayıttaki sembol satırları ilk açılışta favorilere taşınır. VIX ve Yahoo vekili (`/api/quote`) kaldırıldı.
 - "Favori taraması" sağ panelden İşlemler panelinde Analiz'in yanındaki **Kurulumlar** sekmesine taşındı (`#kurView`, `scan.js` aynı `#scan` / `#scanNote` öğelerine yazar).
+
+- **Katlanabilir (25 Kasım 2026, kullanıcı isteği):** başlık düğmesi (`#watchToggle`, ▸/▾) `#watchBody`'yi açar/kapar; varsayılan kapalı, durum `seviye.izlemeAcik`. Kapalıyken veri çekilmez (Binance/CoinGecko), açılınca hemen yenilenir. "+ Ekle" kapalı listeyi açar.
+- **Canlı göstergeler (24 Kasım 2026, kullanıcı: "bu veriler değişmiyor"):** CoinGecko `global` birkaç dakikada bir güncelleniyor (ölçüm: `updated_at` 3+ dk aynı) ve sık istekte 429 veriyor ("Failed to fetch"). Artık CoinGecko anlık görüntüsü 5 dk'da bir (hatada 2 dk sonra) alınır; o anda Binance `ticker/price` (tüm USDT pariteleri) taban fiyat olarak kaydedilir. 10 sn'de bir Binance fiyatlarıyla ilk 250 coinin piyasa değeri ölçeklenir (değer × fiyat/taban; USDT ve USDC sabit, Binance'te olmayanlar sabit): TOTAL, BTC/ETH payı ve dominanslar canlı. 24 saatlik değişim tabanı `coins/markets` `market_cap_change_24h`'tan. İlk denemede CoinGecko istekleri 429 (tarayıcıda CORS hatası olarak) döndü; artık `server.py` `/api/cg?k=global|markets` ile 4 dk önbellekli vekil (hata olursa eski veriyi verir), dosyadan açılışta doğrudan CoinGecko'ya düşer. Son anlık görüntü `seviye.izlemeSnap`'ta saklanır (açılışta hemen gösterilir, 1 günden eskiyse kullanılmaz). `server.py` değişikliği için baslat.bat yeniden başlatılmalı.
 
 ## Hisseler (24 Kasım 2026)
 
@@ -353,9 +362,31 @@ Kullanıcı NVDA 4s'te boğa bayrağı varken long önerilmediğini sordu; Kurul
 - **Düzen:** `#kurIdea` iki sütun (`.kcol.short` solda, `.kcol.long` sağda), dar ekranda tek sütun. 4s/1G dışı grafikte not satırı.
 - **Favori taraması:** aynı tipler 4s/1G'de taranır (Giriş oluştu / Kırılıyor / Yaklaşıyor), listede formasyon adıyla; bildirim gönderilmez (sadece bölge "iyi kurulum"larına bildirim).
 
+### Limit giriş ve trend kırılımı kurulumları (24 Kasım 2026)
+
+Kullanıcı: "Kurulumlar mevcut fiyattan giriş gösteriyor, dirençlerden ya da formasyona göre girmek gerekmiyor mu? Trend kırılımlarını da görebilirsek iyi olur." (BTC 4s: aylık trend direnci 61.485, kart girişi 60.246 = bölge − 0,4 ATR, yüksek oynaklıkta fiyatın yanı.)
+
+- **Backtest (tarayıcıda, 30 Binance coini, 1s 8000 / 4s 6000 / 1G 3000 mum, aylık+haftalık+günlük veri Binance'ten, 28.718 olay; plan aynı: %5 stop, +5/+10/+20, 30 gün; rastgele ≈ %49):**
+  - Bölgeye **limit** (kenara değince dolar, mum kenarın ötesinde açılırsa açılıştan; aynı mumda stop görülürse stop) ile eski **ret kapanışı** girişi neredeyse aynı: short trend+yönünde %59 (685) / %61 (584); long trend+yönünde %50 / %51.
+  - **Önemli düzeltme:** Eski STATS 5 coinden geliyordu (short güçlü-yönünde %66, long %68). 30 coinde long güçlü-yönünde %50'ye iniyor (rastgele düzeyi); short %59 tutuyor. STATS 30 coin limit sonuçlarıyla değiştirildi (tr/te = coin yarıları).
+  - Trend kırılımı (alt zaman diliminde kapanış çizginin 0,25 ATR ötesinde, önceki kapanış diğer tarafta; çizgi başına bir kez): günlük düşen çizgi yukarı (1s/4s) %56 (942; yarılar %61/%52), günlük yükselen çizgi aşağı %59 (468; %61/%57), haftalık yükselen aşağı + piyasa ayı %59 (104). Haftalık düşen yukarı %46, aylık çizgiler %40–44, günlük grafikte günlük çizgi kırılımı %48–49: gösterilmez. Kırılım sonrası çizgiye geri test limiti: günlük long %57, short %53 (kullanılmadı).
+- **Kod:** `scenario.js` `eventAt` artık bölge kenarına değmeyi limit dolumu sayar (`lim: true`, `follow` dolum mumunda stopu kontrol eder); bekleyen planın girişi kenarın kendisi (önceden kenar ± 0,4 ATR). Canlı mum da taranır ("bu mumda" doldu). Durumlar: Bekleniyor / Yaklaşıyor (limite) / Limit doldu / stop / başabaş / +200. `inzone`, `late`, `broken` artık üretilmez.
+- `good` = trend çizgisi + piyasa yönünde + p50 ≥ %58, n ≥ 100, iki yarı ≥ %55 (`strongSt`). Kart etiketi: Güçlü / Orta / Zayıf. Şu an sadece short güçlü-yönünde "Güçlü".
+- Formasyon "Kırılıyor" durumunda giriş artık kırılım seviyesi (önceden anlık fiyat).
+- **`SV.scen.trendLive`** (`TST`): 1s/4s grafikte günlük trend çizgileri (`SV.zones.build` son 500 kapanmış günlük mum, bugün ve 2 gün önceki anlık görüntü; kırılım sonrası çizgi düşse de 2 gün görünür), her grafikte haftalık yükselen çizgi (sadece piyasa ayıyken, short). Son 5 kapanan + canlı mumda kırılım → Giriş oluştu / Kırılıyor; yoksa her yön için en yakın çizgi 4 ATR içindeyse Bekleniyor / Yaklaşıyor (giriş = çizgi ± 0,25 ATR). Kartlar formasyon kartlarıyla aynı (`patCard`, `kind: 'trend'`), güce göre sıralı.
+- Favori taraması: trend kırılımları da taranır (günlük veri 600 mum, HTF önbelleği 1 saat). Listede bölge kurulumlarından sadece Güçlü olanlar görünür.
+
+### Sembol geçişi bildirimi hatası (24 Kasım 2026)
+
+Kullanıcı: "BTCUSDT 4s: dirence yaklaştı · Fiyat 714,540 (SPY fiyatı)". Sebep: `load()` sırasında `S.symbol` yeni sembole geçmiş, `bars`/`idea` hâlâ eskiydi; 15 sn'lik yenileme ya da `checkAlerts` eski veriyi yeni adla bildirdi. Düzeltme: `barsKey` (verinin ait olduğu market+sembol+aralık) `bars` atanırken yazılır; `load()` başında `idea = null`; `idea.key = barsKey`; `checkAlerts`, `checkSignalAlerts` ve `renderIdeaInner` anahtar güncel sembolle eşleşmezse çalışmaz ("Hesaplanıyor…").
+
+### Kırılım kartı metni (24 Kasım 2026)
+
+Kullanıcı fiyatın altındaki short kırılım girişini (ETH, haftalık yükselen trend 1.584,81, fiyat 1.690) "mevcut fiyatın altına short" diye yanlış anladı. Trend/formasyon kartları artık açıkça kapanış tetiklidir: durum "Bekleniyor · fiyat X altında kapanırsa short", bilgi satırı "Aşağı kırılım kurulumu: … altında kapanışta giriş, şimdiden emir yok", tablo satırı "Altında kapanış / Üstünde kapanış".
+
 ### Favori taraması (`scan.js`)
 
-- Her favori için 4s ve 1G grafikte 5 dakikada bir (ilk tarama açılıştan 4 sn sonra) 500 mum çekilir, aylık/haftalık veri 6 saat önbellekte tutulur, `SV.scen.live` çalıştırılır.
+- Her favori için 4s ve 1G grafikte 15 dakikada bir 500 mum çekilir (kullanıcı isteği, 24 Kasım 2026: sayfa her açıldığında taramasın). Son tarama `seviye.tarama` anahtarında (zaman, sonuçlar, favori sayısı) saklanır; açılışta kayıtlı sonuç gösterilir, sonraki tarama son taramadan 15 dk sonra (en erken 5 sn). Not satırında son ve sonraki tarama saati, aylık/haftalık veri 6 saat önbellekte tutulur, `SV.scen.live` çalıştırılır.
 - Listede sadece güçlü kurulumlar (Giriş oluştu / Bölgede / Yaklaşıyor) görünür, "iyi kurulum" / "örnek az" / "piyasa yönüne ters" diye işaretlenir; zayıflar sayı olarak yazılır. Tıklayınca o parite ve zaman dilimi açılır. Bildirim sadece iyi kurulumlar için.
 - Açık grafikteki parite/zaman dilimi için bildirimi `app.js` verir, tarayıcı tekrar etmez.
 

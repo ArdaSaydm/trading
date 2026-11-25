@@ -6,12 +6,16 @@ import threading
 import urllib.request
 import webbrowser
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote
+import time
+from urllib.parse import parse_qs, unquote, urlparse
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(ROOT, "seviye.db")
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
 LOCK = threading.Lock()
+CG = {"global": "https://api.coingecko.com/api/v3/global", "markets": "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1"}
+CG_CACHE = {}
+CG_LOCK = threading.Lock()
 
 
 def db():
@@ -53,9 +57,39 @@ class Handler(SimpleHTTPRequestHandler):
                 rows = con.execute("SELECT key, value FROM state").fetchall()
             self.send_json(200, {k: json.loads(v) for k, v in rows})
             return
+        if self.path.split("?")[0] == "/api/cg":
+            self.send_cg()
+            return
         if self.path in ("/", ""):
             self.path = "/seviye.html"
         super().do_GET()
+
+    def send_cg(self):
+        k = (parse_qs(urlparse(self.path).query).get("k") or [""])[0]
+        if k not in CG:
+            self.send_json(404, {"error": "not found"})
+            return
+        with CG_LOCK:
+            hit = CG_CACHE.get(k)
+            if not hit or time.time() - hit[0] > 240:
+                try:
+                    req = urllib.request.Request(CG[k], headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=15) as r:
+                        hit = (time.time(), r.read())
+                    CG_CACHE[k] = hit
+                except Exception:
+                    if hit:
+                        CG_CACHE[k] = (time.time() - 120, hit[1])
+        if not hit:
+            self.send_json(502, {"error": "coingecko"})
+            return
+        data = hit[1]
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         if self.path != "/api/hl":

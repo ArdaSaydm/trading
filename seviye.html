@@ -6,7 +6,7 @@
 <title>Seviye · Grafik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261124x">
+<link rel="stylesheet" href="style.css?v=20261125c">
 </head>
 <body>
 <header>
@@ -68,7 +68,6 @@
       <div class="seg" id="domSeg" role="group" aria-label="Dominans">
         <button data-d="CRYPTOCAP:BTC.D">BTC.D</button><button data-d="CRYPTOCAP:USDT.D">USDT.D</button>
       </div>
-      <p class="note">Dominans grafiği TradingView'in ücretsiz gömülü grafiğidir; Buy/Sell sinyalleri burada çalışmaz, çizim araçları grafiğin solunda.</p>
       <button class="link" id="domBack">← Grafiğe dön</button>
     </div>
     <div class="tvbox" id="tvBox"></div>
@@ -98,7 +97,6 @@
     <form class="tform" id="hlForm" hidden>
       <label class="wide">Hyperliquid cüzdan adresi<input type="text" id="hlAddr" spellcheck="false" autocomplete="off" placeholder="0x…"></label>
       <div class="acts"><button class="btn sm" type="submit">Bağla</button><button class="link" type="button" id="hlCancel">Vazgeç</button></div>
-      <p class="note">Sadece herkese açık adres gerekir; özel anahtar ya da API anahtarı istenmez, işlem açılamaz. Adresi boş bırakıp Bağla'ya basarsan bağlantı kesilir.</p>
       <p class="note down" id="hlErr"></p>
     </form>
     <div class="tview" id="posView">
@@ -126,38 +124,39 @@
   <div class="sideResize" id="sideResize" role="separator" aria-orientation="vertical" aria-label="Sağ panel genişliği" tabindex="0" title="Sürükle: genişlik · çift tık: sıfırla"></div>
   <aside id="side">
     <section class="watchbox">
-      <h2 class="h2row">İzleme listesi <button class="chip" id="watchAddBtn" title="Sembol ekle">+ Ekle</button></h2>
+      <h2 class="h2row"><button class="whead" id="watchToggle" aria-expanded="false" aria-controls="watchBody"><span class="wcaret" aria-hidden="true">▸</span> İzleme listesi</button> <button class="chip" id="watchAddBtn" title="Sembol ekle">+ Ekle</button></h2>
+      <div id="watchBody" hidden>
       <form id="watchForm" class="wform" hidden><input id="watchIn" list="watchOpts" placeholder="SOL, NVDA, BTC.D, TOTAL3…" autocomplete="off" spellcheck="false" aria-label="Eklenecek sembol"><button class="btn sm" type="submit">Ekle</button></form>
       <datalist id="watchOpts"></datalist>
       <div class="wscroll"><table class="wt"><thead><tr><th>Sembol</th><th>Son</th><th>Değ.</th><th>Değ.%</th><th></th></tr></thead><tbody id="watch"></tbody></table></div>
-      <p class="note" id="watchNote"></p>
+      </div>
     </section>
-    <section>
-      <h2 class="h2row">İşlem fikri <button class="chip" id="notifyBtn"></button></h2>
+    <section data-sec="fikir">
+      <h2 class="h2row"><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> İşlem fikri</button> <button class="chip" id="notifyBtn"></button></h2>
       <div id="idea"><p class="empty">Hesaplanıyor…</p></div>
     </section>
-    <section>
-      <h2>Durum</h2>
+    <section data-sec="durum">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Durum</button></h2>
       <div class="state" id="state"></div>
     </section>
-    <section>
-      <h2>Formasyonlar <span class="note">(grafikte sadece aktif olanlar; diğerlerini görmek için tıkla)</span></h2>
+    <section data-sec="formasyon">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Formasyonlar</button></h2>
       <ul class="ev" id="pats"></ul>
     </section>
-    <section>
-      <h2>Son sinyaller <span class="note">(tıkla, grafikte git)</span></h2>
+    <section data-sec="sinyal">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Son sinyaller</button></h2>
       <ul class="ev" id="sigs"></ul>
     </section>
-    <section>
-      <h2>Destek ve direnç</h2>
+    <section data-sec="seviye">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Destek ve direnç</button></h2>
       <table><thead><tr><th>Tür</th><th>Fiyat</th><th>Temas</th><th>Uzaklık</th></tr></thead><tbody id="lvl"></tbody></table>
     </section>
-    <section>
-      <h2>Çizimler <span class="note">(göz ikonuyla gizle/göster)</span></h2>
+    <section data-sec="cizim">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Çizimler</button></h2>
       <ul class="draws" id="draws"></ul>
     </section>
-    <section>
-      <h2>Sinyal başarısı <span class="note">(bu grafikteki geçmiş)</span></h2>
+    <section data-sec="basari">
+      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Sinyal başarısı</button></h2>
       <table><thead><tr><th>Sinyal</th><th>Adet</th><th>Başarı</th><th>Ort.</th><th>Rastgeleye göre</th></tr></thead><tbody id="stats"></tbody></table>
     </section>
     <section>
@@ -178,29 +177,28 @@
   <div class="ghead">
     <div>
       <h2 id="guideTitle">Formasyon rehberi</h2>
-      <p class="note">En yaygın kullanılandan en az kullanılana doğru sıralı (traderlar arasındaki yaygınlığa göre yaklaşık bir sıralama). Hedefler "ölçülen hareket" kuralıdır, garanti değildir.</p>
     </div>
     <button id="closeGuide" class="link">Kapat ✕</button>
   </div>
   <div class="ggrid" id="guideGrid"></div>
 </dialog>
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="store.js?v=20261124x"></script>
-<script src="indicators.js?v=20261124x"></script>
-<script src="patterns.js?v=20261124x"></script>
-<script src="analysis.js?v=20261124x"></script>
-<script src="zones.js?v=20261124x"></script>
-<script src="scenario.js?v=20261124x"></script>
-<script src="orange.js?v=20261124x"></script>
-<script src="turn.js?v=20261124x"></script>
-<script src="zz.js?v=20261124x"></script>
-<script src="guide.js?v=20261124x"></script>
-<script src="drawings.js?v=20261124x"></script>
-<script src="trades.js?v=20261124x"></script>
-<script src="history.js?v=20261124x"></script>
-<script src="favs.js?v=20261124x"></script>
-<script src="scan.js?v=20261124x"></script>
-<script src="watch.js?v=20261124x"></script>
-<script src="app.js?v=20261124x"></script>
+<script src="store.js?v=20261125c"></script>
+<script src="indicators.js?v=20261125c"></script>
+<script src="patterns.js?v=20261125c"></script>
+<script src="analysis.js?v=20261125c"></script>
+<script src="zones.js?v=20261125c"></script>
+<script src="scenario.js?v=20261125c"></script>
+<script src="orange.js?v=20261125c"></script>
+<script src="turn.js?v=20261125c"></script>
+<script src="zz.js?v=20261125c"></script>
+<script src="guide.js?v=20261125c"></script>
+<script src="drawings.js?v=20261125c"></script>
+<script src="trades.js?v=20261125c"></script>
+<script src="history.js?v=20261125c"></script>
+<script src="favs.js?v=20261125c"></script>
+<script src="scan.js?v=20261125c"></script>
+<script src="watch.js?v=20261125c"></script>
+<script src="app.js?v=20261125c"></script>
 </body>
 </html>

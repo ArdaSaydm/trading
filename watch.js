@@ -13,7 +13,7 @@ SV.watch = (() => {
   };
   const SEED = ['USDT.D+USDC.D', 'USDT.D', 'BTC.D', 'TOTAL3', 'TOTAL'];
   const GROUPS = [['ind', 'Göstergeler'], ['crypto', 'Kripto'], ['tradfi', 'Hisse ve emtia']];
-  let D = null, list = [], q = {}, timer = null, gAt = 0, adding = false;
+  let D = null, list = [], q = {}, timer = null, gAt = 0, adding = false, open = false;
   const $ = id => document.getElementById(id);
   const save = () => SV.store.set('seviye.izleme', list);
   const keyOf = x => x.k === 'b' ? x.m + ':' + x.s : x.id;
@@ -56,7 +56,6 @@ SV.watch = (() => {
       }).join('');
     }
     box.innerHTML = html || '<tr><td colspan="5" class="empty">Liste boş. + ile sembol ekle.</td></tr>';
-    $('watchNote').textContent = 'Değişimler 24 saatlik. Kripto ve hisseler favori listenle aynı: yıldızla eklenen burada da görünür.';
   }
 
   async function refreshBinance() {
@@ -74,40 +73,90 @@ SV.watch = (() => {
     } catch (e) {}
   }
 
-  async function refreshGlobal() {
-    if (!list.some(x => x.k === 'g') || Date.now() - gAt < 60000) return;
+  let snap = null, gWait = 300000;
+  const calc = c => ({
+    'BTC.D': c.btc / c.tot * 100, 'ETH.D': c.eth / c.tot * 100, 'USDT.D': c.usdt / c.tot * 100, 'USDC.D': c.usdc / c.tot * 100,
+    'USDT.D+USDC.D': (c.usdt + c.usdc) / c.tot * 100, 'TOTAL': c.tot, 'TOTAL2': c.tot - c.btc, 'TOTAL3': c.tot - c.btc - c.eth
+  });
+
+  async function prices() {
+    const r = await fetch('https://api.binance.com/api/v3/ticker/price');
+    if (!r.ok) return null;
+    const out = {};
+    for (const t of await r.json()) if (t.symbol.endsWith('USDT')) out[t.symbol] = +t.price;
+    return out;
+  }
+
+  async function refreshSnap() {
+    if (!list.some(x => x.k === 'g') || Date.now() - gAt < gWait) return;
     gAt = Date.now();
     try {
+      const get = async (k, url) => { try { const r = await fetch('/api/cg?k=' + k); if (r.ok) return r; } catch (e) {} return fetch(url); };
       const [r, mk] = await Promise.all([
-        fetch('https://api.coingecko.com/api/v3/global'),
-        fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1')
+        get('global', 'https://api.coingecko.com/api/v3/global'),
+        get('markets', 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1')
       ]);
-      if (!r.ok) return;
+      if (!r.ok) { gWait = 120000; return; }
       const d = (await r.json()).data, m = d.market_cap_percentage, tot = d.total_market_cap.usd;
       const cap = { tot, btc: tot * m.btc / 100, eth: tot * m.eth / 100, usdt: tot * (m.usdt || 0) / 100, usdc: tot * (m.usdc || 0) / 100 };
-      let prev = null;
+      let prev = null, coins = [];
       const arr = mk.ok ? await mk.json().catch(() => null) : null;
       if (Array.isArray(arr)) {
-        const f = {};
+        const f = {}, seen = new Set();
         let sn = 0, sp = 0;
-        for (const c of arr) { const n = c.market_cap || 0, ch = c.market_cap_change_24h || 0; sn += n; sp += n - ch; f[c.id] = n > 0 ? (n - ch) / n : 1; }
-        if (sn > 0 && f.bitcoin && f.ethereum) prev = { tot: tot * sp / sn, btc: cap.btc * f.bitcoin, eth: cap.eth * f.ethereum, usdt: cap.usdt * (f.tether || 1), usdc: cap.usdc * (f['usd-coin'] || 1) };
+        for (const c of arr) {
+          const n = c.market_cap || 0, ch = c.market_cap_change_24h || 0, sym = String(c.symbol || '').toUpperCase() + 'USDT';
+          sn += n; sp += n - ch; f[c.id] = n > 0 ? (n - ch) / n : 1;
+          if (n > 0 && !seen.has(sym) && !['tether', 'usd-coin'].includes(c.id)) { seen.add(sym); coins.push({ id: c.id, sym, cap: n }); }
+        }
+        if (sn > 0 && f.bitcoin && f.ethereum) prev = calc({ tot: tot * sp / sn, btc: cap.btc * f.bitcoin, eth: cap.eth * f.ethereum, usdt: cap.usdt * (f.tether || 1), usdc: cap.usdc * (f['usd-coin'] || 1) });
       }
-      const calc = c => ({
-        'BTC.D': c.btc / c.tot * 100, 'ETH.D': c.eth / c.tot * 100, 'USDT.D': c.usdt / c.tot * 100, 'USDC.D': c.usdc / c.tot * 100,
-        'USDT.D+USDC.D': (c.usdt + c.usdc) / c.tot * 100, 'TOTAL': c.tot, 'TOTAL2': c.tot - c.btc, 'TOTAL3': c.tot - c.btc - c.eth
-      });
-      const v = calc(cap), p = prev ? calc(prev) : {};
-      for (const id in v) {
-        if (!isFinite(v[id])) continue;
-        const b = p[id], chg = b != null && isFinite(b) ? v[id] - b : null;
-        q[id] = { last: v[id], chg, chgPct: chg != null ? chg / b * 100 : null };
-      }
-    } catch (e) {}
+      const px = await prices().catch(() => null);
+      coins = px ? coins.filter(c => px[c.sym] > 0).map(c => ({ ...c, b: px[c.sym] })) : [];
+      snap = { cap, prev, coins, at: Date.now() };
+      SV.store.set('seviye.izlemeSnap', snap);
+      gWait = 300000;
+      live(px);
+    } catch (e) { gWait = 120000; }
+  }
+
+  function live(px) {
+    if (!snap) return;
+    const c = { ...snap.cap };
+    if (px) for (const k of snap.coins) {
+      const p = px[k.sym];
+      if (!(p > 0)) continue;
+      const d = k.cap * (p / k.b - 1);
+      c.tot += d;
+      if (k.id === 'bitcoin') c.btc += d;
+      else if (k.id === 'ethereum') c.eth += d;
+    }
+    const v = calc(c), p = snap.prev || {};
+    for (const id in v) {
+      if (!isFinite(v[id])) continue;
+      const b = p[id], chg = b != null && isFinite(b) ? v[id] - b : null;
+      q[id] = { last: v[id], chg, chgPct: chg != null ? chg / b * 100 : null };
+    }
+  }
+
+  async function refreshGlobal() {
+    await refreshSnap();
+    if (!snap) { const o = SV.store.get('seviye.izlemeSnap', null); if (o && o.cap && Array.isArray(o.coins) && Date.now() - o.at < 864e5) snap = o; }
+    if (!snap || Date.now() - snap.at < 5000) return;
+    try { live(await prices()); } catch (e) {}
+  }
+
+  function setOpen(v) {
+    open = v;
+    SV.store.set('seviye.izlemeAcik', open);
+    $('watchBody').hidden = !open;
+    $('watchToggle').setAttribute('aria-expanded', open);
+    $('watchToggle').querySelector('.wcaret').textContent = open ? '▾' : '▸';
+    if (open) { render(); refresh(); }
   }
 
   async function refresh() {
-    if (document.hidden) return;
+    if (document.hidden || !open) return;
     await Promise.all([refreshBinance(), refreshGlobal()]);
     render();
   }
@@ -136,8 +185,10 @@ SV.watch = (() => {
     list = Array.isArray(saved) ? saved.filter(x => x && x.k === 'g' && IND[x.id]) : SEED.map(id => ({ k: 'g', id }));
     if (Array.isArray(saved) && SV.favs) for (const x of saved) if (x && x.k === 'b' && x.s && x.m && !SV.favs.has(x.m, x.s)) SV.favs.add(x.m, x.s);
     save();
-    if (SV.favs) SV.favs.onChange(() => { render(); refreshBinance().then(render); });
+    if (SV.favs) SV.favs.onChange(() => { render(); if (open) refreshBinance().then(render); });
+    $('watchToggle').addEventListener('click', () => setOpen(!open));
     $('watchAddBtn').addEventListener('click', () => {
+      if (!open) setOpen(true);
       adding = !adding;
       $('watchForm').hidden = !adding;
       if (!adding) return;
@@ -166,8 +217,7 @@ SV.watch = (() => {
       if (!x) return;
       if (x.k === 'b') D.go(x.m, x.s); else D.dom(IND[x.id].tv);
     });
-    render();
-    refresh();
+    setOpen(SV.store.get('seviye.izlemeAcik', false) === true);
     clearInterval(timer);
     timer = setInterval(refresh, 10000);
   }

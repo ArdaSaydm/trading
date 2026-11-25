@@ -376,6 +376,11 @@ details summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)
 .wform{display:flex;gap:6px;margin:0 0 8px}
 .wform input{flex:1;min-width:0}
 .wscroll{overflow:visible}
+.whead{display:inline-flex;align-items:center;gap:6px;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer}
+.whead:hover{color:var(--text)}
+.wcaret{display:inline-block;width:10px;color:var(--muted);font-size:11px}
+#side section.shut>:not(h2){display:none}
+#side section.shut>h2{margin-bottom:0}
 .wt{width:100%;border-collapse:collapse;font-size:12px}
 .wt th{position:sticky;top:0;background:var(--panel);font-weight:500;color:var(--muted);text-align:right;padding:4px 3px;border-bottom:1px solid var(--line)}
 .wt th:first-child{text-align:left}
