@@ -12,12 +12,14 @@ SV.watch = (() => {
     'TOTAL3': { tv: 'CRYPTOCAP:TOTAL3', name: 'BTC ve ETH hariç piyasa değeri' }
   };
   const SEED = ['USDT.D+USDC.D', 'USDT.D', 'BTC.D', 'TOTAL3', 'TOTAL'];
-  const GROUPS = [['ind', 'Göstergeler'], ['crypto', 'Kripto'], ['tradfi', 'Hisse ve emtia']];
+  const GROUPS = [['ind', 'Göstergeler'], ['crypto', 'Kripto'], ['tradfi', 'Hisse ve emtia'], ['bist', 'BIST'], ['tv', 'Diğer']];
+  const BIST0 = ['XU100', 'AKBNK', 'YKBNK', 'PGSUS', 'THYAO', 'MGROS', 'MAVI', 'MPARK'].map(x => 'BIST:' + x);
   let D = null, list = [], q = {}, timer = null, gAt = 0, adding = false, open = false;
   const $ = id => document.getElementById(id);
   const save = () => SV.store.set('seviye.izleme', list);
   const keyOf = x => x.k === 'b' ? x.m + ':' + x.s : x.id;
-  const label = x => x.k === 'b' ? x.s : x.id;
+  const bist = x => x.k === 't' && x.id.startsWith('BIST:');
+  const label = x => x.k === 'b' ? x.s : x.k === 't' ? x.id.replace(/^BIST:/, '') : x.id;
   const tr = (x, d) => x.toLocaleString('tr-TR', { minimumFractionDigits: d, maximumFractionDigits: d });
   const big = x => { const a = Math.abs(x); return a >= 1e12 ? tr(x / 1e12, 2) + ' T' : a >= 1e9 ? tr(x / 1e9, 2) + ' B' : a >= 1e6 ? tr(x / 1e6, 2) + ' M' : tr(x, 2); };
   const sgn = (x, s) => (x >= 0 ? '+' : '−') + s.replace('-', '');
@@ -27,16 +29,17 @@ SV.watch = (() => {
 
   function group(x) {
     if (x.k === 'g') return 'ind';
+    if (x.k === 't') return x.id.startsWith('BIST:') ? 'bist' : 'tv';
     return D.kind(x.s) ? 'tradfi' : 'crypto';
   }
 
   function cell(x) {
     const v = q[keyOf(x)];
     if (!v || v.last == null) return '<td class="num">—</td><td class="num">—</td><td class="num">—</td>';
-    const isBig = x.k === 'g' && !IND[x.id].pct, isPct = x.k === 'g' && IND[x.id].pct;
-    const lastTxt = isBig ? big(v.last) : isPct ? tr(v.last, 2) + '%' : SV.fmt(v.last);
+    const isBig = x.k === 'g' && !IND[x.id].pct, isPct = x.k === 'g' && IND[x.id].pct, dec = x.k === 't' ? (v.dec ?? 2) : null;
+    const lastTxt = isBig ? big(v.last) : isPct ? tr(v.last, 2) + '%' : dec != null ? tr(v.last, dec) : SV.fmt(v.last);
     const c = v.chg, cp = v.chgPct, cls = cp == null ? '' : cp >= 0 ? 'up' : 'down';
-    const chgTxt = c == null ? '—' : sgn(c, isBig ? big(c) : isPct ? tr(c, 2) : SV.fmt(Math.abs(c)));
+    const chgTxt = c == null ? '—' : sgn(c, isBig ? big(c) : isPct ? tr(c, 2) : dec != null ? tr(Math.abs(c), dec) : SV.fmt(Math.abs(c)));
     const pctTxt = cp == null ? '—' : sgn(cp, tr(cp, 2)) + '%';
     return `<td class="num">${lastTxt}</td><td class="num ${cls}">${chgTxt}</td><td class="num ${cls}">${pctTxt}</td>`;
   }
@@ -50,9 +53,10 @@ SV.watch = (() => {
       const items = all().filter(x => group(x) === g);
       if (!items.length) continue;
       html += `<tr class="wg"><td colspan="5">${name}</td></tr>` + items.map(x => {
-        const on = x.k === 'b' ? cur.view === 'chart' && cur.symbol === x.s && cur.market === x.m : cur.view === 'dom' && cur.dom === IND[x.id].tv;
-        const title = x.k === 'b' ? `${x.s} · ${x.m === 'spot' ? 'Spot' : 'Vadeli'}` : IND[x.id].name;
-        return `<tr class="wr${on ? ' on' : ''}" data-w="${esc(keyOf(x))}" title="${esc(title)}"><td><span class="ws">${esc(label(x))}</span>${x.k === 'b' && x.m === 'futures' ? '<small>V</small>' : ''}</td>${cell(x)}<td class="wx"><button class="del" data-wdel="${esc(keyOf(x))}" title="${x.k === 'b' ? 'Favorilerden çıkar' : 'Listeden çıkar'}" aria-label="${x.k === 'b' ? 'Favorilerden çıkar' : 'Listeden çıkar'}">✕</button></td></tr>`;
+        const tv = x.k === 't' ? x.id : x.k === 'g' ? IND[x.id].tv : null;
+        const on = x.k === 'b' ? cur.view === 'chart' && cur.symbol === x.s && cur.market === x.m : x.k === 'g' ? cur.view === 'chart' && cur.market === 'cap' && cur.symbol === x.id : bist(x) ? cur.view === 'chart' && cur.market === 'bist' && cur.symbol === label(x) : cur.view === 'dom' && cur.dom === tv;
+        const title = x.k === 'b' ? `${x.s} · ${x.m === 'spot' ? 'Spot' : 'Vadeli'}` : x.k === 't' ? ((q[x.id] && q[x.id].name) || x.id) : IND[x.id].name;
+        return `<tr class="wr${on ? ' on' : ''}" data-w="${esc(keyOf(x))}" title="${esc(title)}"><td><span class="ws">${esc(label(x))}</span>${x.k === 'b' && x.m === 'futures' ? '<small>V</small>' : ''}${x.k === 't' && q[x.id] && q[x.id].delayed ? '<small title="15 dk gecikmeli">G</small>' : ''}</td>${cell(x)}<td class="wx"><button class="del" data-wdel="${esc(keyOf(x))}" title="${x.k === 'b' ? 'Favorilerden çıkar' : 'Listeden çıkar'}" aria-label="${x.k === 'b' ? 'Favorilerden çıkar' : 'Listeden çıkar'}">✕</button></td></tr>`;
       }).join('');
     }
     box.innerHTML = html || '<tr><td colspan="5" class="empty">Liste boş. + ile sembol ekle.</td></tr>';
@@ -139,7 +143,37 @@ SV.watch = (() => {
     }
   }
 
+  async function scan(tickers) {
+    const r = await fetch('https://scanner.tradingview.com/global/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers }, columns: ['close', 'change', 'change_abs', 'description', 'pricescale', 'update_mode'] }) });
+    if (!r.ok) return null;
+    const out = {};
+    for (const x of (await r.json()).data || []) {
+      const [c, cp, ca, name, ps, um] = x.d;
+      if (isFinite(c)) out[x.s] = { last: c, chg: isFinite(ca) ? ca : null, chgPct: isFinite(cp) ? cp : null, name, dec: ps > 0 ? Math.max(0, Math.round(Math.log10(ps))) : 2, delayed: /delayed/.test(um || '') };
+    }
+    return out;
+  }
+
+  async function refreshTV() {
+    const ids = list.some(x => x.k === 'g') ? ['TOTAL', 'TOTAL2', 'TOTAL3', 'USDT.D', 'USDC.D', 'BTC.D', 'ETH.D'] : [], tv = list.filter(x => x.k === 't').map(x => x.id);
+    if (!ids.length && !tv.length) return true;
+    try {
+      const res = await scan([...ids.map(x => 'CRYPTOCAP:' + x), ...tv]);
+      if (!res) return false;
+      for (const id of tv) if (res[id]) q[id] = res[id];
+      if (!ids.length) return true;
+      const got = {};
+      for (const id of ids) { const v = res['CRYPTOCAP:' + id]; if (v) got[id] = { last: v.last, chg: v.chg, chgPct: v.chgPct }; }
+      if (!got.TOTAL) return false;
+      Object.assign(q, got);
+      const a = got['USDT.D'], b = got['USDC.D'];
+      if (a && b) { const last = a.last + b.last, chg = a.chg != null && b.chg != null ? a.chg + b.chg : null; q['USDT.D+USDC.D'] = { last, chg, chgPct: chg != null ? chg / (last - chg) * 100 : null }; }
+      return true;
+    } catch (e) { return false; }
+  }
+
   async function refreshGlobal() {
+    if (await refreshTV() || !list.some(x => x.k === 'g')) return;
     await refreshSnap();
     if (!snap) { const o = SV.store.get('seviye.izlemeSnap', null); if (o && o.cap && Array.isArray(o.coins) && Date.now() - o.at < 864e5) snap = o; }
     if (!snap || Date.now() - snap.at < 5000) return;
@@ -165,14 +199,19 @@ SV.watch = (() => {
     const v = raw.toUpperCase().replace(/\s+/g, '');
     if (!v) return null;
     if (IND[v]) return { k: 'g', id: v };
+    if (v.includes(':')) return { k: 't', id: v };
     let s = v.replace(/[^A-Z0-9]/g, '');
     if (!/^[A-Z0-9]{2,}(USDT|USDC|FDUSD|BTC|ETH|BNB|TRY|EUR)$/.test(s)) s += 'USDT';
     return { k: 'b', s, m: D.kind(s) ? 'futures' : 'spot' };
   }
 
-  function add(raw) {
-    const x = parse(raw);
+  async function add(raw) {
+    let x = parse(raw);
     if (!x) return;
+    const v = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (x.k === 'b' && /^[A-Z][A-Z0-9]{2,5}$/.test(v) && !document.querySelector(`#syms option[value="${v}USDT"]`)) {
+      try { const r = await scan(['BIST:' + v]); if (r && r['BIST:' + v]) { x = { k: 't', id: 'BIST:' + v }; q[x.id] = r[x.id]; } } catch (e) {}
+    }
     if (x.k === 'b') SV.favs.add(x.m, x.s);
     else if (!list.some(y => keyOf(y) === keyOf(x))) { list.push(x); save(); }
     gAt = 0;
@@ -182,7 +221,8 @@ SV.watch = (() => {
   function init(deps) {
     D = deps;
     const saved = SV.store.get('seviye.izleme', null);
-    list = Array.isArray(saved) ? saved.filter(x => x && x.k === 'g' && IND[x.id]) : SEED.map(id => ({ k: 'g', id }));
+    list = Array.isArray(saved) ? saved.filter(x => x && ((x.k === 'g' && IND[x.id]) || (x.k === 't' && x.id))) : SEED.map(id => ({ k: 'g', id }));
+    if (!SV.store.get('seviye.izlemeBist', false)) { for (const id of BIST0) if (!list.some(y => y.id === id)) list.push({ k: 't', id }); SV.store.set('seviye.izlemeBist', true); }
     if (Array.isArray(saved) && SV.favs) for (const x of saved) if (x && x.k === 'b' && x.s && x.m && !SV.favs.has(x.m, x.s)) SV.favs.add(x.m, x.s);
     save();
     if (SV.favs) SV.favs.onChange(() => { render(); if (open) refreshBinance().then(render); });
@@ -215,12 +255,21 @@ SV.watch = (() => {
       if (!row) return;
       const x = all().find(y => keyOf(y) === row.dataset.w);
       if (!x) return;
-      if (x.k === 'b') D.go(x.m, x.s); else D.dom(IND[x.id].tv);
+      if (x.k === 'b') D.go(x.m, x.s); else if (x.k === 'g') D.go('cap', x.id); else if (bist(x)) D.go('bist', label(x)); else D.dom(x.k === 't' ? x.id : IND[x.id].tv);
     });
     setOpen(SV.store.get('seviye.izlemeAcik', false) === true);
     clearInterval(timer);
     timer = setInterval(refresh, 10000);
   }
 
-  return { init, render, list: all };
+  const hasTv = id => list.some(x => (x.k === 't' || x.k === 'g') && x.id === id);
+  function toggleTv(id) {
+    const k = IND[id] ? 'g' : 't';
+    if (hasTv(id)) list = list.filter(x => x.id !== id);
+    else list.push({ k, id });
+    save(); render(); refresh();
+    return hasTv(id);
+  }
+
+  return { init, render, list: all, hasTv, toggleTv };
 })();

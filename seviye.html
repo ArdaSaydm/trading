@@ -6,7 +6,7 @@
 <title>Seviye · Grafik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261125c">
+<link rel="stylesheet" href="style.css?v=20261125k">
 </head>
 <body>
 <header>
@@ -14,7 +14,7 @@
     <div class="brand"><h1 id="title">BTCUSDT</h1><span class="px num" id="px">—</span><span class="chg num" id="chg"></span></div>
     <div class="ctl">
       <div class="seg" id="mkt" role="group" aria-label="Piyasa">
-        <button data-v="spot">Spot</button><button data-v="futures">Vadeli</button>
+        <button data-v="spot">Spot</button><button data-v="futures">Vadeli</button><button data-v="bist">BIST</button>
       </div>
       <input type="text" id="sym" list="syms" aria-label="Parite" spellcheck="false" autocomplete="off">
       <button class="star" id="favBtn" aria-pressed="false" title="Favorilere ekle" aria-label="Favorilere ekle"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg></button>
@@ -126,43 +126,43 @@
     <section class="watchbox">
       <h2 class="h2row"><button class="whead" id="watchToggle" aria-expanded="false" aria-controls="watchBody"><span class="wcaret" aria-hidden="true">▸</span> İzleme listesi</button> <button class="chip" id="watchAddBtn" title="Sembol ekle">+ Ekle</button></h2>
       <div id="watchBody" hidden>
-      <form id="watchForm" class="wform" hidden><input id="watchIn" list="watchOpts" placeholder="SOL, NVDA, BTC.D, TOTAL3…" autocomplete="off" spellcheck="false" aria-label="Eklenecek sembol"><button class="btn sm" type="submit">Ekle</button></form>
+      <form id="watchForm" class="wform" hidden><input id="watchIn" list="watchOpts" placeholder="SOL, NVDA, THYAO, BTC.D…" autocomplete="off" spellcheck="false" aria-label="Eklenecek sembol"><button class="btn sm" type="submit">Ekle</button></form>
       <datalist id="watchOpts"></datalist>
       <div class="wscroll"><table class="wt"><thead><tr><th>Sembol</th><th>Son</th><th>Değ.</th><th>Değ.%</th><th></th></tr></thead><tbody id="watch"></tbody></table></div>
       </div>
     </section>
     <section data-sec="fikir">
-      <h2 class="h2row"><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> İşlem fikri</button> <button class="chip" id="notifyBtn"></button></h2>
+      <h2 class="h2row"><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> İşlem fikri</button> <button class="chip" id="notifyBtn"></button></h2>
       <div id="idea"><p class="empty">Hesaplanıyor…</p></div>
     </section>
     <section data-sec="durum">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Durum</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Durum</button></h2>
       <div class="state" id="state"></div>
     </section>
     <section data-sec="formasyon">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Formasyonlar</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Formasyonlar</button></h2>
       <ul class="ev" id="pats"></ul>
     </section>
     <section data-sec="sinyal">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Son sinyaller</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Son sinyaller</button></h2>
       <ul class="ev" id="sigs"></ul>
     </section>
     <section data-sec="seviye">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Destek ve direnç</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Destek ve direnç</button></h2>
       <table><thead><tr><th>Tür</th><th>Fiyat</th><th>Temas</th><th>Uzaklık</th></tr></thead><tbody id="lvl"></tbody></table>
     </section>
     <section data-sec="cizim">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Çizimler</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Çizimler</button></h2>
       <ul class="draws" id="draws"></ul>
     </section>
     <section data-sec="basari">
-      <h2><button class="whead" aria-expanded="true"><span class="wcaret" aria-hidden="true">▾</span> Sinyal başarısı</button></h2>
+      <h2><button class="whead" aria-expanded="false"><span class="wcaret" aria-hidden="true">▸</span> Sinyal başarısı</button></h2>
       <table><thead><tr><th>Sinyal</th><th>Adet</th><th>Başarı</th><th>Ort.</th><th>Rastgeleye göre</th></tr></thead><tbody id="stats"></tbody></table>
     </section>
     <section>
       <details>
         <summary>Ayarlar</summary>
-        <div class="set">
+        <div class="set" id="setBox">
           <label class="sel">Geçmiş veri <select id="depth"><option value="1000">1.000 mum</option><option value="3000">3.000 mum</option><option value="5000">5.000 mum</option></select></label>
           <label>Pivot genişliği <span class="num" id="o_pivot"></span><input type="range" id="pivot" min="2" max="15" step="1"></label>
           <label>Seviye sayısı <span class="num" id="o_levels"></span><input type="range" id="levels" min="2" max="16" step="1"></label>
@@ -183,22 +183,22 @@
   <div class="ggrid" id="guideGrid"></div>
 </dialog>
 <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
-<script src="store.js?v=20261125c"></script>
-<script src="indicators.js?v=20261125c"></script>
-<script src="patterns.js?v=20261125c"></script>
-<script src="analysis.js?v=20261125c"></script>
-<script src="zones.js?v=20261125c"></script>
-<script src="scenario.js?v=20261125c"></script>
-<script src="orange.js?v=20261125c"></script>
-<script src="turn.js?v=20261125c"></script>
-<script src="zz.js?v=20261125c"></script>
-<script src="guide.js?v=20261125c"></script>
-<script src="drawings.js?v=20261125c"></script>
-<script src="trades.js?v=20261125c"></script>
-<script src="history.js?v=20261125c"></script>
-<script src="favs.js?v=20261125c"></script>
-<script src="scan.js?v=20261125c"></script>
-<script src="watch.js?v=20261125c"></script>
-<script src="app.js?v=20261125c"></script>
+<script src="store.js?v=20261125k"></script>
+<script src="indicators.js?v=20261125k"></script>
+<script src="patterns.js?v=20261125k"></script>
+<script src="analysis.js?v=20261125k"></script>
+<script src="zones.js?v=20261125k"></script>
+<script src="scenario.js?v=20261125k"></script>
+<script src="orange.js?v=20261125k"></script>
+<script src="turn.js?v=20261125k"></script>
+<script src="zz.js?v=20261125k"></script>
+<script src="guide.js?v=20261125k"></script>
+<script src="drawings.js?v=20261125k"></script>
+<script src="trades.js?v=20261125k"></script>
+<script src="history.js?v=20261125k"></script>
+<script src="favs.js?v=20261125k"></script>
+<script src="scan.js?v=20261125k"></script>
+<script src="watch.js?v=20261125k"></script>
+<script src="app.js?v=20261125k"></script>
 </body>
 </html>

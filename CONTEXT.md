@@ -38,6 +38,7 @@ Kullanıcının kendi analizi için çizim araçları da var: trend çizgisi, ya
 | `patterns.js` | `SV.patterns.detect(bars, ctx, S)`: formasyonlar ve parabolik trend |
 | `analysis.js` | `SV.analysis.compute` (seviyeler, sinyaller, başarı istatistikleri, formasyonlar, durum), `htfTrends`, `arcs`, `signals`, `evaluate`, `indicators` |
 | `turn.js` | `SV.turn`: Sarı üçgen (ön uyarı + teyit) piyasa dönüşü (`detect`, `stats`), haftalık mumlardan |
+| `otomatik_baslat.bat` / `otomatik_kaldir.bat` | Windows açılışında sunucuyu arka planda başlatma / kaldırma |
 | `zz.js` | `SV.zz`: Turuncu yuvarlak, haftalık sabit %20 zigzag dönüşleri (`detect` → `{list, now}`, `stats`) |
 | `watch.js` | `SV.watch`: izleme listesi (göstergeler CoinGecko, semboller = favoriler, Binance) |
 | `orange.js` | `SV.orange`: Turuncu büyük dönüş deseni (`detect`, `stats`), günlük mumlardan |
@@ -193,11 +194,38 @@ Kullanıcı isteğiyle:
 - İzleme listesi iç kaydırma olmadan tam boy.
 - Sağ panel genişliği sürüklenebilir: `#sideResize` (grafik ile panel arasında 6 px'lik sütun), 260 px ile (pencere − 520 px) arası. `--side` CSS değişkeni, `seviye.sagGenislik`; çift tık sıfırlar, ←/→ tuşları 30 px.
 
+## BIST piyasası (25 Kasım 2026)
+
+Kullanıcı BIST hisselerini (XU100, AKBNK, YKBNK, PGSUS, THYAO, MGROS, MAVI, MPARK) takip ediyor; TradingView gömülü grafiği BIST'i göstermiyor ("Sembol sadece TradingView'de bulunabilir") ve kullanıcı "bizim indikatörlerle analiz edilmiş olması lazım" dedi.
+- Veri: Yahoo Finance grafik API'si (`SEMBOL.IS`), tarayıcıdan CORS'a takıldığı için `server.py` `/api/yf?s=&i=&r=` vekili (20 sn önbellek, parametreler beyaz listede); "max" için `range=max` yerine `period1=0&period2=şimdi` (range=max günlük/haftalıkta seyrek veri döndürüyor: THYAO 1G 319 mum yerine 6.824). baslat.bat yeniden başlatılmalı; eski sunucuda kartta "Sunucu eski" hatası.
+- `S.market = 'bist'` (piyasa düğmelerinde "BIST"). Aralıklar: 5d/15d 60 gün, 1s 730 gün (60m), 4s = 60m'den gün içi seans başından 4 saatlik gruplar (`agg4`), 1G/1H/1A tüm geçmiş. Üst zaman dilimleri (1A, 1H, 1G) de Yahoo'dan. Canlı: WebSocket yok, 60 sn'de bir kısa aralık çekilir (`poll`), durum "15 dk gecikmeli".
+- Arama: BIST hisse/fon listesi TradingView tarayıcısından (`turkey/scan`, borsa BIST, piyasa değerine göre, ~650), günde bir yenilenir (`seviye.bistListe`); XU100, XU030, XBANK elle eklenir. `#syms`'e "BIST:KOD" değeri ve "Şirket adı · BIST" etiketiyle girer (izleme listesi "+ Ekle" de aynı listeyi kullanır).
+- Sembol kutusu: "BIST:THYAO", "THYAO.IS" ya da BIST piyasasındayken düz kod. BIST'ten Spot/Vadeli'ye geçince BTCUSDT, tersinde XU100 açılır.
+- İzleme listesindeki BIST satırına tıklayınca bizim grafikte açılır; yıldız BIST'te izleme listesine ekler/çıkarır (favoriler ve favori taraması sadece Binance).
+- Kurulum oranları kripto backtest'inden ve "Piyasa yönü" BTC aylık rejimi; BIST için test edilmedi.
+
+## Gösterge grafikleri (TOTAL, BTC.D…, 25 Kasım 2026)
+
+Kullanıcı: "Bunları da başka yerden çekemez miyiz? TradingView'de analiz edemiyoruz." `S.market = 'cap'`, semboller `CAPS`: TOTAL, TOTAL2, TOTAL3 (milyar $), BTC.D, ETH.D, USDT.D, USDC.D, USDT.D+USDC.D.
+- Kaynak: CoinMarketCap'in grafik verisi (`api.coinmarketcap.com/data-api/v3/global-metrics/quotes/historical?format=chart&interval=5m|15m|1h|1d` → toplam piyasa değeri, BTC/ETH dominansı; istek başına en çok ~2.200 nokta; günlük 2013'ten beri, saatlik yıllar geriye) ve USDT/USDC piyasa değeri (`cryptocurrency/historical?id=825|3408&interval=1d|1h`, istek başına ~730–770 nokta, 1h aslında 2 saatte bir). Tarayıcıdan CORS'a takıldığı için `server.py` `/api/cmc` vekili (60 sn önbellek, beyaz liste).
+- Mumlar noktalardan: 5d←5m, 15d←15m, 1s←1h, 4s←1h (4 saatlik UTC grupları), 1G←1d, 1H/1A←1d (Pazartesi / ay başı). Açılış = önceki kapanış, yüksek/düşük = açılış ve içindeki noktalar. Hacim = toplam 24 saatlik hacim (son nokta). Stablecoin değeri en yakın önceki noktadan.
+- Değerler TradingView CRYPTOCAP ile birebir aynı değil (CMC toplamı biraz farklı); izleme listesi değerleri TradingView'den.
+- Canlı: 60 sn'de bir son 3 gün çekilir. Üst çubuktaki BTC.D / USDT.D, izleme listesindeki gösterge satırları ve aramada "BTC.D" gibi kodlar bu grafiği açar; yıldız izleme listesine ekler/çıkarır.
+
+## Otomatik başlatma ve telefondan erişim (25 Kasım 2026)
+
+Kullanıcı: "Bilgisayar açıldığında otomatik çalışsın, telefondan da erişebileyim, responsive olsun."
+- `server.py` bayrakları: `--lan` (0.0.0.0'a bağlanır, ev ağından erişilir), `--bg` (tarayıcı açmaz). Port doluysa (sunucu zaten çalışıyorsa) yeni süreç çıkar; `--bg` değilse tarayıcıyı açar. `/api/info` → `{lan, port, ips}` (yerel IP'ler; UDP 8.8.8.8 hilesi + hostname). `baslat.bat` artık `--lan` ile.
+- `otomatik_baslat.bat`: Başlangıç klasörüne `Seviye.vbs` yazar (`pyw -3` ya da `pythonw` ile `server.py --lan --bg`, gizli pencere) ve hemen başlatır. `otomatik_kaldir.bat`: VBS'yi siler, komut satırında `server.py … --bg` olan süreci kapatır. İlk çalışmada Windows Güvenlik Duvarı sorar: sadece "Özel ağlar" işaretlenmeli.
+- Ayarlar bölümünde (LAN modunda) "Telefon: http://192.168.x.x:8000". Sadece varsayılan ağ arabiriminin IP'si gösterilir (kullanıcının bilgisayarında VirtualBox 192.168.56.1 ve WSL 172.27.80.1 de vardı; doğru adres 192.168.1.8). `telefon_izni.bat`: yönetici olarak TCP 8000 için Özel ağ gelen izni kuralı ("Seviye 8000") ekler, ağ profillerini gösterir, onay alırsa internete bağlı ağı Özel yapar.
+- Telefon düzeni (≤600 px): İşlemler sekmeleri tek satır, yatay kaydırmalı; kurulum kartlarında tablo bilginin altına iner. 390 px'te yatay taşma yok (üst hızlı çubuk zaten kaydırmalı).
+- Güvenlik: sunucuda şifre yok; modemden port yönlendirme yapılmamalı.
+
 ## Sade arayüz (25 Kasım 2026)
 
 Kullanıcı: "Gereksiz yazı istemiyorum hiçbir yerde, sadece ben kullanacağım." Kaldırılanlar: kurulum kartlarındaki "Nasıl hesaplandı?" ve piyasa kutusundaki "Nasıl belirleniyor?" bölümleri, piyasa açıklama satırı, "Kurulumlar sekmesinde… Yatırım tavsiyesi değildir" notu (kullanıcı isteğiyle), veri yoksa "Son dönüş teyidi / ön uyarı / turuncu" satırları (satır hiç çıkmaz), formasyon/trend kartı açıklama cümleleri, son kurulum ve "piyasaya ters" notları, bölgesi olmayan boş kurulum kartı, başlık parantez notları, izleme listesi notu, bildirim sekmesi açıklaması, açık emir/geçmiş/analiz açıklama paragrafları, HL bağlantı penceresi ve dominans görünümü notları, formasyon rehberi giriş notu, favori taraması "zayıf … listelenmedi" satırı. Boş durumlar "—". Sinyal listesinde sadece ilk gerekçe; formasyon listesinde sadece hedef ve olasılık. Tarama notu "· 13:30 → 13:45".
 
-Sağ paneldeki bölümler (İşlem fikri, Durum, Formasyonlar, Son sinyaller, Destek ve direnç, Çizimler, Sinyal başarısı) başlığa tıklayınca açılır/kapanır (`section[data-sec]`, `.shut`), durum `seviye.bolumler`; varsayılan açık. İzleme listesi varsayılan kapalı. Ayarlar zaten `details`.
+Sağ paneldeki bölümler (İşlem fikri, Durum, Formasyonlar, Son sinyaller, Destek ve direnç, Çizimler, Sinyal başarısı) başlığa tıklayınca açılır/kapanır (`section[data-sec]`, `.shut`), durum `seviye.bolumler`; varsayılan kapalı (kullanıcı isteği). İzleme listesi varsayılan kapalı. Ayarlar zaten `details`.
 
 ## Canlı veri koruması (24 Kasım 2026)
 
@@ -217,6 +245,8 @@ Kullanıcı TradingView tarzı bir izleme listesi istedi (ekran görüntüsü: U
 - **Kullanıcı isteği (VIX'e gerek yok, statik olmasın):** Kripto/hisse satırları doğrudan favori listesidir (`SV.favs.list()`, `onChange` ile canlı). "+ Ekle" ile eklenen sembol favorilere, satırdaki ✕ favorilerden çıkarır; yıldız da aynı listeyi değiştirir. `seviye.izleme` sadece göstergeleri saklar (USDT.D+USDC.D, USDT.D, BTC.D, TOTAL3, TOTAL; eklenebilir: ETH.D, USDC.D, TOTAL2). Eski kayıttaki sembol satırları ilk açılışta favorilere taşınır. VIX ve Yahoo vekili (`/api/quote`) kaldırıldı.
 - "Favori taraması" sağ panelden İşlemler panelinde Analiz'in yanındaki **Kurulumlar** sekmesine taşındı (`#kurView`, `scan.js` aynı `#scan` / `#scanNote` öğelerine yazar).
 
+- **TradingView verisi (25 Kasım 2026, kullanıcı: "göstergeler hâlâ eski, TradingView'den veri akmıyor"):** CoinGecko değerleri TradingView'den farklı (ör. USDT.D 8,54 / +%2,69 ↔ TV 8,71 / +%1,46; TOTAL 2,04 T ↔ 2,00 T). Göstergeler artık TradingView tarayıcısından: `POST https://scanner.tradingview.com/global/scan` `{symbols:{tickers:['CRYPTOCAP:TOTAL',…]}, columns:['close','change','change_abs']}` (CORS açık, ~10 sn'de güncelleniyor, tek istek). Değişim TradingView gibi günlük (UTC gün başından). USDT.D+USDC.D = toplam; değişim = mutlak değişimler toplamı. TradingView yanıt vermezse eski CoinGecko + Binance yolu yedek.
+- **BIST ve TradingView sembolleri (25 Kasım 2026):** Listede `k: 't'` öğeleri (`id` = TradingView sembolü, ör. `BIST:THYAO`). Göstergelerle aynı `global/scan` isteğinde (sütunlar close, change, change_abs, description, pricescale, update_mode); ondalık `pricescale`'den, gecikmeliyse (BIST ücretsiz veri 15 dk) "G" etiketi. Grup "BIST" (diğer borsalar "Diğer"). "+ Ekle": `BORSA:SEMBOL` doğrudan; 3–6 harfli kod `#syms`'te `…USDT` olarak yoksa önce `BIST:` denenir, yoksa kripto. Tıklayınca TradingView görünümü açılır. Kullanıcının takip ettikleri (XU100, AKBNK, YKBNK, PGSUS, THYAO, MGROS, MAVI, MPARK) bir kez eklendi (`seviye.izlemeBist`). Üst çubuktaki BTC.D / USDT.D de artık TradingView'den, 30 sn'de bir.
 - **Katlanabilir (25 Kasım 2026, kullanıcı isteği):** başlık düğmesi (`#watchToggle`, ▸/▾) `#watchBody`'yi açar/kapar; varsayılan kapalı, durum `seviye.izlemeAcik`. Kapalıyken veri çekilmez (Binance/CoinGecko), açılınca hemen yenilenir. "+ Ekle" kapalı listeyi açar.
 - **Canlı göstergeler (24 Kasım 2026, kullanıcı: "bu veriler değişmiyor"):** CoinGecko `global` birkaç dakikada bir güncelleniyor (ölçüm: `updated_at` 3+ dk aynı) ve sık istekte 429 veriyor ("Failed to fetch"). Artık CoinGecko anlık görüntüsü 5 dk'da bir (hatada 2 dk sonra) alınır; o anda Binance `ticker/price` (tüm USDT pariteleri) taban fiyat olarak kaydedilir. 10 sn'de bir Binance fiyatlarıyla ilk 250 coinin piyasa değeri ölçeklenir (değer × fiyat/taban; USDT ve USDC sabit, Binance'te olmayanlar sabit): TOTAL, BTC/ETH payı ve dominanslar canlı. 24 saatlik değişim tabanı `coins/markets` `market_cap_change_24h`'tan. İlk denemede CoinGecko istekleri 429 (tarayıcıda CORS hatası olarak) döndü; artık `server.py` `/api/cg?k=global|markets` ile 4 dk önbellekli vekil (hata olursa eski veriyi verir), dosyadan açılışta doğrudan CoinGecko'ya düşer. Son anlık görüntü `seviye.izlemeSnap`'ta saklanır (açılışta hemen gösterilir, 1 günden eskiyse kullanılmaz). `server.py` değişikliği için baslat.bat yeniden başlatılmalı.
 

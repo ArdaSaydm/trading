@@ -22,7 +22,7 @@ SV.favs = (() => {
 
   function sync() {
     if (!D) return;
-    const cur = D.cur(), on = cur.view === 'chart' && has(cur.market, cur.symbol);
+    const cur = D.cur(), on = cur.view === 'chart' && (cur.market === 'bist' || cur.market === 'cap' ? !!(SV.watch && SV.watch.hasTv && SV.watch.hasTv((cur.market === 'bist' ? 'BIST:' : '') + cur.symbol)) : has(cur.market, cur.symbol));
     const b = $('favBtn');
     b.setAttribute('aria-pressed', on);
     b.title = on ? 'Favorilerden çıkar' : 'Favorilere ekle';
@@ -32,6 +32,7 @@ SV.favs = (() => {
 
   function toggle() {
     const { market: m, symbol: s } = D.cur();
+    if (m === 'bist' || m === 'cap') { const on = SV.watch.toggleTv((m === 'bist' ? 'BIST:' : '') + s); D.toast(`${s} ${on ? 'izleme listesine eklendi' : 'izleme listesinden çıkarıldı'}`); sync(); return; }
     if (has(m, s)) { list = list.filter(f => !(f.m === m && f.s === s)); D.toast(`${label(s)} favorilerden çıkarıldı`); }
     else { list.push({ s, m }); D.toast(`${label(s)} favorilere eklendi`); refresh(); }
     save(); render();

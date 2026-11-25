@@ -2,6 +2,8 @@
 await SV.store.init();
 const LWC = window.LightweightCharts;
 const $ = id => document.getElementById(id);
+const MKTN = { spot: 'Spot', futures: 'Vadeli', bist: 'BIST', cap: 'Gösterge' };
+const CAPS = { TOTAL: 'Toplam kripto piyasa değeri (milyar $)', TOTAL2: 'BTC hariç piyasa değeri (milyar $)', TOTAL3: 'BTC ve ETH hariç piyasa değeri (milyar $)', 'BTC.D': 'BTC dominansı', 'ETH.D': 'ETH dominansı', 'USDT.D': 'USDT dominansı', 'USDC.D': 'USDC dominansı', 'USDT.D+USDC.D': 'Stablecoin dominansı' };
 const API = {
   spot:    { rest: ['https://api.binance.com/api/v3/klines', 'https://data-api.binance.vision/api/v3/klines'], ws: 'wss://stream.binance.com:9443/ws/' },
   futures: { rest: ['https://fapi.binance.com/fapi/v1/klines'], ws: 'wss://fstream.binance.com/ws/' }
@@ -121,7 +123,89 @@ async function fetchHistory(base, interval, depth, onPage) {
   return out;
 }
 
+const YI = { '5m': ['5m', '60d', '5d'], '15m': ['15m', '60d', '5d'], '1h': ['60m', '730d', '5d'], '4h': ['60m', '730d', '5d'], '1d': ['1d', 'max', '1mo'], '1w': ['1wk', 'max', '2y'], '1M': ['1mo', 'max', '2y'] };
+function agg4(list, off) {
+  const out = [];
+  let day = null, h0 = 0, key = null;
+  for (const x of list) {
+    const lt = x.t + off, d = Math.floor(lt / 86400), h = (lt - d * 86400) / 3600;
+    if (d !== day) { day = d; h0 = h; }
+    const k = d * 10 + Math.floor((h - h0) / 4);
+    if (k !== key) { key = k; out.push({ ...x }); }
+    else { const c = out[out.length - 1]; c.h = Math.max(c.h, x.h); c.l = Math.min(c.l, x.l); c.c = x.c; c.v += x.v; }
+  }
+  return out;
+}
+async function fetchYahoo(sym, iv, short) {
+  const [i, full, part] = YI[iv];
+  const r = await fetch(`/api/yf?s=${encodeURIComponent(sym + '.IS')}&i=${i}&r=${short ? part : full}`);
+  if (r.status === 404 && !(await r.clone().json().catch(() => null))) throw Object.assign(new Error('Sunucu eski, baslat.bat yeniden başlatılmalı'), { fatal: true });
+  if (r.status === 404 || r.status === 400) throw Object.assign(new Error('BIST\'te yok'), { fatal: true });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const q = ((await r.json()).chart || {}).result;
+  const d = q && q[0];
+  if (!d || !d.timestamp) throw Object.assign(new Error('BIST\'te yok'), { fatal: true });
+  const o = d.indicators.quote[0], out = [];
+  for (let k = 0; k < d.timestamp.length; k++) {
+    const c = o.close[k], op = o.open[k], h = o.high[k], l = o.low[k];
+    if (!(c > 0) || !(op > 0) || !(h > 0) || !(l > 0)) continue;
+    const t = d.timestamp[k];
+    if (out.length && t <= out[out.length - 1].t) { out[out.length - 1] = { t: out[out.length - 1].t, o: out[out.length - 1].o, h: Math.max(h, out[out.length - 1].h), l: Math.min(l, out[out.length - 1].l), c, v: out[out.length - 1].v + (o.volume[k] || 0) }; continue; }
+    out.push({ t, o: op, h, l, c, v: o.volume[k] || 0 });
+  }
+  return iv === '4h' ? agg4(out, d.meta.gmtoffset || 10800) : out;
+}
+
+const CI = { '5m': ['5m', 300, 300], '15m': ['15m', 900, 900], '1h': ['1h', 3600, 3600], '4h': ['1h', 3600, 14400], '1d': ['1d', 86400, 86400], '1w': ['1d', 86400, 604800], '1M': ['1d', 86400, 2629800] };
+async function cmc(q) {
+  const r = await fetch('/api/cmc?' + q);
+  if (r.status === 404 && !(await r.clone().json().catch(() => null))) throw Object.assign(new Error('Sunucu eski, baslat.bat yeniden başlatılmalı'), { fatal: true });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  return (j.data && j.data.quotes) || [];
+}
+const spans = (from, to, span) => { const w = []; for (let b = to; b > from; b -= span) w.push([Math.max(from, b - span), b]); return w; };
+async function fetchCap(sym, iv, short) {
+  if (!CAPS[sym]) throw Object.assign(new Error('Gösterge yok'), { fatal: true });
+  const [src, ss, cs] = CI[iv], now = Math.floor(Date.now() / 1000);
+  const want = short ? 3 * 86400 + 4 * cs : src === '1d' ? now - 1367020800 : Math.min(8 * 1800 * ss, (S.depth + 60) * cs);
+  const from = Math.max(1367020800, now - want);
+  const G = (await Promise.all(spans(from, now, 1800 * ss).map(([a, b]) => cmc(`t=g&iv=${src}&a=${a}&b=${b}`)))).flat();
+  const pts = [];
+  for (const x of G) {
+    const q = x.quote && x.quote[0];
+    if (!q || !(q.totalMarketCap > 0)) continue;
+    pts.push({ t: Date.parse(x.timestamp) / 1000, tot: q.totalMarketCap, btc: x.btcDominance, eth: x.ethDominance, v: q.totalVolume24H || 0 });
+  }
+  pts.sort((a, b) => a.t - b.t);
+  const P = pts.filter((p, k) => !k || p.t > pts[k - 1].t);
+  if (!P.length) throw new Error('Veri yok');
+  const ids = [/USDT/.test(sym) && '825', /USDC/.test(sym) && '3408'].filter(Boolean), stab = {};
+  for (const id of ids) {
+    const civ = src === '1d' ? '1d' : '1h', span = civ === '1d' ? 700 * 86400 : 80 * 86400;
+    const Q = (await Promise.all(spans(P[0].t - 86400, now, span).map(([a, b]) => cmc(`t=c&id=${id}&iv=${civ}&a=${a}&b=${b}`)))).flat();
+    stab[id] = Q.map(x => [Date.parse(x.timeClose || x.timeOpen) / 1000, x.quote && x.quote.marketCap]).filter(x => x[1] > 0).sort((a, b) => a[0] - b[0]);
+  }
+  const at = (arr, t) => { let lo = 0, hi = arr.length - 1, r = arr.length ? arr[0][1] : 0; while (lo <= hi) { const m = (lo + hi) >> 1; if (arr[m][0] <= t) { r = arr[m][1]; lo = m + 1; } else hi = m - 1; } return r; };
+  const val = p => {
+    const b = p.tot * p.btc / 100, e = p.tot * p.eth / 100, u = ids.includes('825') ? at(stab['825'], p.t) : 0, c = ids.includes('3408') ? at(stab['3408'], p.t) : 0;
+    return { TOTAL: p.tot / 1e9, TOTAL2: (p.tot - b) / 1e9, TOTAL3: (p.tot - b - e) / 1e9, 'BTC.D': p.btc, 'ETH.D': p.eth, 'USDT.D': u / p.tot * 100, 'USDC.D': c / p.tot * 100, 'USDT.D+USDC.D': (u + c) / p.tot * 100 }[sym];
+  };
+  const key = t => iv === '1M' ? (() => { const d = new Date(t * 1000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) / 1000; })() : iv === '1w' ? (Math.floor((t / 86400 + 3) / 7) * 7 - 3) * 86400 : Math.floor(t / cs) * cs;
+  const out = [];
+  for (const p of P) {
+    const x = val(p);
+    if (!isFinite(x) || !(x > 0)) continue;
+    const k = key(p.t), last = out[out.length - 1];
+    if (last && last.t === k) { last.h = Math.max(last.h, x); last.l = Math.min(last.l, x); last.c = x; last.v = p.v; }
+    else { const o = last ? last.c : x; out.push({ t: k, o, h: Math.max(o, x), l: Math.min(o, x), c: x, v: p.v }); }
+  }
+  return out;
+}
+const EXT = { bist: fetchYahoo, cap: fetchCap };
+
 async function fetchBars(my) {
+  if (EXT[S.market]) return (await EXT[S.market](S.symbol, S.interval)).slice(-S.depth);
   let lastErr;
   for (const base of API[S.market].rest) {
     try {
@@ -160,7 +244,7 @@ async function load() {
   overlay.load(S.symbol);
   patSel = null;
   if (htfKey !== S.market + S.symbol) { htf = {}; htfRaw = {}; }
-  showMsg('Yükleniyor', `${S.symbol} · ${S.market === 'spot' ? 'Spot' : 'Vadeli'} · ${S.interval}`);
+  showMsg('Yükleniyor', `${S.symbol} · ${MKTN[S.market]} · ${S.interval}`);
   setLive('wait', 'Yükleniyor');
   try {
     const data = await fetchBars(my);
@@ -196,7 +280,8 @@ async function load() {
       return;
     }
     setLive('err', 'Hata');
-    if (e.fatal) showMsg('Parite bulunamadı', `${S.symbol} ${S.market === 'spot' ? 'spot' : 'vadeli'} piyasada yok.${S.market === 'spot' ? ' Altın, gümüş, bakır, Brent ve hisseler (NVDA, AAPL…) sadece Vadeli\'de var.' : ''} (${e.message})`);
+    if (e.fatal && EXT[S.market]) showMsg('Veri yok', `${S.symbol}: ${e.message}`);
+    else if (e.fatal) showMsg('Parite bulunamadı', `${S.symbol} ${S.market === 'spot' ? 'spot' : 'vadeli'} piyasada yok.${S.market === 'spot' ? ' Altın, gümüş, bakır, Brent ve hisseler (NVDA, AAPL…) sadece Vadeli\'de var.' : ''} (${e.message})`);
     else showMsg('Binance verisine ulaşılamadı', `İnternet bağlantını kontrol et. Bazı ülkelerde Binance API'si (özellikle vadeli) engelli olabilir. Dosya açılışında sorun olursa klasörde "python -m http.server" çalıştırıp localhost:8000/seviye.html adresinden aç. (${e.message})`);
   }
 }
@@ -234,7 +319,7 @@ async function poll() {
   const my = wsToken;
   if (!bars.length) return;
   try {
-    const page = await fetchPage(API[S.market].rest[0], S.interval, 2, 0);
+    const page = EXT[S.market] ? (await EXT[S.market](S.symbol, S.interval, true)).slice(-3) : await fetchPage(API[S.market].rest[0], S.interval, 2, 0);
     if (my !== wsToken || !page.length) return;
     const lastT = bars[bars.length - 1].t;
     page.forEach((b, k) => { if (b.t >= lastT) ingest(b, k < page.length - 1 && b.t === lastT); });
@@ -260,6 +345,12 @@ function failWs(my) {
 
 function connectWs(my) {
   if (my !== wsToken) return;
+  if (EXT[S.market]) {
+    polling = true; lastMsg = Date.now();
+    setLive('on', S.market === 'bist' ? '15 dk gecikmeli' : 'CoinMarketCap · 1 dk');
+    pollTimer = setInterval(() => { lastMsg = Date.now(); poll(); }, 60000);
+    return;
+  }
   const list = WSS[S.market];
   gotMsg = false;
   try { ws = new WebSocket(`${list[wsIdx % list.length]}${S.symbol.toLowerCase()}@kline_${S.interval}`); }
@@ -290,10 +381,10 @@ async function loadHtf(force) {
   const key = S.market + S.symbol;
   if (!force && htfKey === key && Date.now() - htfAt < 1800000) { computeHtf(); return; }
   htfKey = key; htfAt = Date.now();
-  const base = API[S.market].rest[0];
+  const base = EXT[S.market] ? null : API[S.market].rest[0];
   await Promise.all(HTF.map(async ([k]) => {
     try {
-      const data = await fetchHistory(base, k, k === '1d' ? 2000 : 1000);
+      const data = EXT[S.market] ? (await EXT[S.market](S.symbol, k)).slice(k === '1d' ? -2000 : -1000) : await fetchHistory(base, k, k === '1d' ? 2000 : 1000);
       if (htfKey === key) htfRaw[k] = data;
     } catch (e) {}
   }));
@@ -862,7 +953,7 @@ function renderPatterns() {
       : o && live ? `<span class="why"><b class="${o.dir > 0 ? 'up' : 'down'}">${o.dir > 0 ? '↑' : '↓'} Hedef ${tg(o.target)} · olasılık %${Math.round(o.prob * 100)}</b></span>` : p.target != null ? `<span class="why">Hedef ${tg(p.target)}</span>` : '';
     return `<li><button data-p="${i}"${patSel === i ? ' aria-current="true"' : ''}><span class="tag ${p.bull === true ? 'buy' : p.bull === false ? 'sell' : 'neu'}">${p.name}</span><span class="st ${p.active ? 'act' : ''}">${p.active ? 'Aktif · ' : ''}${PST[p.status]}</span><time>${dtf.format(bars[p.last].t * 1000)}</time>${out}</button></li>`;
   };
-  $('pats').innerHTML = (act.length ? act.map(row).join('') : '<li class="empty">Şu an aktif formasyon yok.</li>') + old.map(row).join('');
+  $('pats').innerHTML = (act.length ? act.map(row).join('') : '') + old.map(row).join('');
 }
 $('pats').addEventListener('click', e => {
   const b = e.target.closest('button[data-p]');
@@ -962,18 +1053,19 @@ function setView(v) {
 
 async function loadDominance() {
   try {
-    const r = await fetch('https://api.coingecko.com/api/v3/global');
+    const r = await fetch('https://scanner.tradingview.com/global/scan', { method: 'POST', body: JSON.stringify({ symbols: { tickers: ['CRYPTOCAP:BTC.D', 'CRYPTOCAP:USDT.D'] }, columns: ['close'] }) });
     if (!r.ok) return;
-    const m = (await r.json()).data.market_cap_percentage;
-    $('qBtcD').textContent = `${m.btc.toFixed(2).replace('.', ',')}%`;
-    $('qUsdtD').textContent = `${m.usdt.toFixed(2).replace('.', ',')}%`;
+    const m = {};
+    for (const x of (await r.json()).data || []) m[x.s] = x.d[0];
+    if (m['CRYPTOCAP:BTC.D'] > 0) $('qBtcD').textContent = `${m['CRYPTOCAP:BTC.D'].toFixed(2).replace('.', ',')}%`;
+    if (m['CRYPTOCAP:USDT.D'] > 0) $('qUsdtD').textContent = `${m['CRYPTOCAP:USDT.D'].toFixed(2).replace('.', ',')}%`;
   } catch (e) {}
 }
 
 function syncQuick() {
   if (SV.watch && SV.watch.list) SV.watch.render();
   for (const b of $('quick').querySelectorAll('button[data-s], button[data-d]')) {
-    const on = b.dataset.d ? S.view === 'dom' && S.dom === b.dataset.d : S.view === 'chart' && S.symbol === b.dataset.s && S.market === b.dataset.m;
+    const on = b.dataset.d ? S.view === 'chart' && S.market === 'cap' && 'CRYPTOCAP:' + S.symbol === b.dataset.d : S.view === 'chart' && S.symbol === b.dataset.s && S.market === b.dataset.m;
     b.setAttribute('aria-pressed', on);
   }
   for (const b of $('domSeg').children) b.setAttribute('aria-pressed', b.dataset.d === S.dom);
@@ -1001,7 +1093,11 @@ function go(market, symbol) {
   if (changed || !bars.length) load();
 }
 
-$('mkt').addEventListener('click', e => { const v = e.target.closest('button')?.dataset.v; if (v && v !== S.market) go(v, S.symbol); });
+$('mkt').addEventListener('click', e => {
+  const v = e.target.closest('button')?.dataset.v;
+  if (!v || v === S.market) return;
+  go(v, v === 'bist' ? 'XU100' : EXT[S.market] ? 'BTCUSDT' : S.symbol);
+});
 $('tf').addEventListener('click', e => {
   const v = e.target.closest('button')?.dataset.v;
   if (!v || v === S.interval) return;
@@ -1012,7 +1108,7 @@ $('tf').addEventListener('click', e => {
 $('quick').addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b || b.id === 'openGuide') return;
-  if (b.dataset.d) { S.dom = b.dataset.d; setView('dom'); }
+  if (b.dataset.d) go('cap', b.dataset.d.replace('CRYPTOCAP:', ''));
   else go(b.dataset.m, b.dataset.s);
 });
 $('domSeg').addEventListener('click', e => { const d = e.target.closest('button')?.dataset.d; if (d) { S.dom = d; setView('dom'); } });
@@ -1038,12 +1134,51 @@ async function loadTradfi() {
   }
 }
 loadTradfi();
+async function loadBist() {
+  let c = SV.store.get('seviye.bistListe', null);
+  if (!c || !Array.isArray(c.list) || Date.now() - c.at > 864e5) {
+    try {
+      const r = await fetch('https://scanner.tradingview.com/turkey/scan', { method: 'POST', body: JSON.stringify({ columns: ['name', 'description'], filter: [{ left: 'exchange', operation: 'equal', right: 'BIST' }], sort: { sortBy: 'market_cap_basic', sortOrder: 'desc' }, range: [0, 2000] }) });
+      if (r.ok) { const j = await r.json(); c = { at: Date.now(), list: (j.data || []).map(x => [x.d[0], x.d[1]]) }; SV.store.set('seviye.bistListe', c); }
+    } catch (e) {}
+  }
+  const cf = document.createDocumentFragment();
+  for (const [k, name] of Object.entries(CAPS)) if (!$('syms').querySelector(`option[value="${k}"]`)) { const o = document.createElement('option'); o.value = k; o.label = name; cf.appendChild(o); }
+  $('syms').appendChild(cf);
+  const rows = [['XU100', 'BIST 100 endeksi'], ['XU030', 'BIST 30 endeksi'], ['XBANK', 'BIST Banka endeksi'], ...((c && c.list) || [])];
+  const list = $('syms'), have = new Set([...list.options].map(o => o.value)), frag = document.createDocumentFragment();
+  for (const [k, name] of rows) {
+    const v = 'BIST:' + k;
+    if (have.has(v)) continue;
+    have.add(v);
+    const o = document.createElement('option');
+    o.value = v; o.label = `${name} · BIST`;
+    frag.appendChild(o);
+  }
+  list.appendChild(frag);
+}
+loadBist();
+(async () => {
+  try {
+    const r = await fetch('/api/info');
+    if (!r.ok) return;
+    const j = await r.json();
+    if (!j.lan || !j.ips || !j.ips.length) return;
+    const p = document.createElement('p');
+    p.className = 'phoneurl';
+    p.innerHTML = `Telefon: <b class="num">http://${j.ips[0]}:${j.port}</b>`;
+    $('setBox').appendChild(p);
+  } catch (e) {}
+})();
 function setSym() {
-  let v = $('sym').value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const raw = $('sym').value.toUpperCase().trim().replace(/^CRYPTOCAP:/, '');
+  if (CAPS[raw]) { if (raw !== S.symbol || S.market !== 'cap') go('cap', raw); else $('sym').value = S.symbol; return; }
+  let v = raw.replace(/^BIST:/, '').replace(/\.IS$/, '').replace(/[^A-Z0-9]/g, '');
   if (!v) { $('sym').value = S.symbol; return; }
+  if (/^BIST:|\.IS$/.test(raw) || (S.market === 'bist' && !/USDT$/.test(v) && !TRADFI[v + 'USDT'])) { if (v !== S.symbol || S.market !== 'bist') go('bist', v); else $('sym').value = S.symbol; return; }
   if (!TRADFI[v] && TRADFI[v + 'USDT']) v += 'USDT';
   else if (!/^[A-Z0-9]{2,}(USDT|USDC|FDUSD|BTC|ETH|BNB|TRY|EUR)$/.test(v)) v += 'USDT';
-  const market = TRADFI[v] ? 'futures' : S.market;
+  const market = TRADFI[v] ? 'futures' : EXT[S.market] ? 'spot' : S.market;
   if (v !== S.symbol || market !== S.market) go(market, v);
   else $('sym').value = S.symbol;
 }
@@ -1073,7 +1208,7 @@ async function catchUp() {
   const my = wsToken;
   if (!bars.length) return;
   try {
-    const page = await fetchPage(API[S.market].rest[0], S.interval, 100, 0);
+    const page = EXT[S.market] ? await EXT[S.market](S.symbol, S.interval, true) : await fetchPage(API[S.market].rest[0], S.interval, 100, 0);
     if (my !== wsToken || !page.length) return;
     if (page[0].t > bars[bars.length - 1].t) { load(); return; }
     let added = false;
@@ -1135,7 +1270,7 @@ setInterval(loadBtcMonthly, 3600e3);
   for (const sec of document.querySelectorAll('#side > section[data-sec]')) {
     const k = sec.dataset.sec, btn = sec.querySelector('h2 .whead');
     const set = v => { sec.classList.toggle('shut', !v); btn.setAttribute('aria-expanded', v); btn.querySelector('.wcaret').textContent = v ? '▾' : '▸'; };
-    set(st[k] !== false);
+    set(st[k] === true);
     btn.addEventListener('click', () => { const v = sec.classList.contains('shut'); st[k] = v; SV.store.set('seviye.bolumler', st); set(v); });
   }
 })();
@@ -1163,5 +1298,5 @@ renderDrawings();
 setView(S.view);
 load();
 loadDominance();
-setInterval(loadDominance, 300000);
+setInterval(loadDominance, 30000);
 })();
